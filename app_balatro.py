@@ -15,9 +15,9 @@ DEFAULT_LON = 107.01
 PROFILE_STORE = "observer_profiles.json"
 
 LOCATION_PRESETS = {
-    "THCS Minh Duc (Dong Nai)": (10.95, 107.01),
+    "THCS Minh Đức (Đồng Nai)": (10.95, 107.01),
     "TP.HCM": (10.7769, 106.7009),
-    "Ha Noi": (21.0285, 105.8542),
+    "Hà Nội": (21.0285, 105.8542),
 }
 
 OBJECT_CATEGORIES = {
@@ -43,13 +43,44 @@ FUN_FACTS = {
     "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
 }
 
+DISPLAY_NAMES = {
+    "Mat Troi": "☀️ Mặt Trời",
+    "Mat Trang": "🌕 Mặt Trăng",
+    "Sao Thuy": "🪐 Sao Thủy",
+    "Sao Kim": "🪐 Sao Kim",
+    "Sao Hoa": "🪐 Sao Hỏa",
+    "Sao Moc": "🪐 Sao Mộc",
+    "Sao Tho": "🪐 Sao Thổ",
+    "Polaris": "⭐ Polaris",
+    "Sirius": "⭐ Sirius",
+    "Vega": "⭐ Vega",
+    "Orion": "✨ Chòm Orion",
+    "Cassiopeia": "✨ Chòm Cassiopeia",
+    "Andromeda": "🌀 Thiên hà Andromeda",
+}
+
 
 def apply_theme():
     st.markdown(
         """
     <style>
-    .stApp { background: linear-gradient(180deg, #0f172a 0%, #111827 100%); color: #e5e7eb; }
-    .block-container { max-width: 1200px; padding-top: 1.4rem; }
+    .stApp { background: radial-gradient(circle at 10% -10%, #1e293b 0%, #0f172a 45%, #020617 100%); color: #e5e7eb; }
+    .block-container { max-width: 1200px; padding-top: 1.6rem; }
+    h1, h2, h3 { color: #e0f2fe !important; letter-spacing: -0.3px; }
+    [data-testid="stMetric"] {
+        background: rgba(15, 23, 42, 0.75);
+        border: 1px solid rgba(125, 211, 252, 0.28);
+        border-radius: 14px;
+        padding: 14px 12px;
+    }
+    .stButton > button {
+        background: linear-gradient(90deg, #22d3ee, #38bdf8) !important;
+        color: #082f49 !important;
+        font-weight: 700 !important;
+        border-radius: 10px !important;
+        border: none !important;
+    }
+    .stButton > button:hover { background: linear-gradient(90deg, #06b6d4, #0ea5e9) !important; color: #f8fafc !important; }
     .guide { background: rgba(6, 78, 59, 0.25); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
     .warn { background: rgba(127, 29, 29, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
     </style>
@@ -130,7 +161,7 @@ def make_chart(rows, only_visible):
     for r in rows:
         if only_visible and not r["visible"]:
             continue
-        fig.add_trace(go.Scatter(x=[r["Azimuth"]], y=[r["Altitude"]], mode="markers+text", text=[r["Thien the"]], textposition="top center", marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"), showlegend=False))
+        fig.add_trace(go.Scatter(x=[r["Azimuth"]], y=[r["Altitude"]], mode="markers+text", text=[vn(r["Thien the"])], textposition="top center", marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"), showlegend=False))
     fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb")
     fig.update_layout(height=460, title="Ban do sao", xaxis_title="Phuong vi (do)", yaxis_title="Do cao (do)")
     return fig
@@ -166,10 +197,14 @@ def render_guidance(target, alt, az):
         st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời, hãy đợi thêm và thử lại.</div>", unsafe_allow_html=True)
 
 
+def vn(name):
+    return DISPLAY_NAMES.get(name, name)
+
+
 def sidebar():
     with st.sidebar:
         st.header("⚙️ Cấu hình quan sát")
-        preset = st.selectbox("📍 Chọn địa điểm", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset")
+        preset = st.selectbox("📍 Chọn địa điểm quan sát", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset")
         if preset != "Tùy chỉnh":
             station = preset
             d_lat, d_lon = LOCATION_PRESETS[preset]
@@ -184,10 +219,10 @@ def sidebar():
 
 
 def main():
-    st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🌌", layout="wide")
+    st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🔭", layout="wide")
     apply_theme()
-    st.title("🌌 Kính Thiên Văn STEM")
-    st.caption("Giao diện gọn, rõ ràng, dễ dùng cho lớp học STEM")
+    st.title("🔭 Kính Thiên Văn STEM")
+    st.caption("🌌 Giao diện rõ ràng • Dễ dùng trong lớp học STEM • Quan sát theo thời gian thực")
 
     station, lat, lon, horizon_hours, step_minutes = sidebar()
     minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
@@ -201,24 +236,24 @@ def main():
         st.code(str(exc))
         st.stop()
 
-    st.write(f"**Trạm:** {station} | **Tọa độ:** {lat:.4f}, {lon:.4f} | **Giờ:** {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
+    st.write(f"📍 **Trạm:** {station} | **Tọa độ:** {lat:.4f}, {lon:.4f} | 🕒 **Giờ:** {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
 
     m1, m2, m3 = st.columns(3)
     vis = len([r for r in rows if r["visible"]])
-    m1.metric("Đang quan sát được", f"{vis}/{len(rows)}")
-    m2.metric("Mục tiêu planner", len(planner))
-    m3.metric("Tổng đối tượng", len(rows))
+    m1.metric("✅ Đang quan sát được", f"{vis}/{len(rows)}")
+    m2.metric("📅 Mục tiêu planner", len(planner))
+    m3.metric("🧭 Tổng đối tượng", len(rows))
 
     f1, f2, f3 = st.columns([2, 2, 1])
-    group = f1.selectbox("Lọc nhóm", ["Tất cả", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="group")
+    group = f1.selectbox("🔎 Lọc nhóm", ["Tất cả", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="group")
     search = f2.text_input("Tìm thiên thể", "", key="search")
     only_visible = f3.toggle("Chỉ hiện đang thấy", False, key="only_visible")
     names = [n for n in db.keys() if (group == "Tất cả" or OBJECT_CATEGORIES.get(n, "") == group) and (search.strip().lower() in n.lower())]
     if not names:
         names = list(db.keys())
-    target = st.selectbox("🪐 Chọn thiên thể", names, key="target")
+    target = st.selectbox("🪐 Chọn thiên thể", names, key="target", format_func=vn)
 
-    if st.button("📍 Dò tìm và quan sát", use_container_width=True):
+    if st.button("📍 Dò tìm & quan sát", use_container_width=True):
         alt, az, dist = compute_alt_az(db[target], observer, ts.now())
         dist_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoang cach lon"
         st.session_state.scan = {"target": target, "alt": alt, "az": az, "dist": dist_text}
@@ -232,10 +267,10 @@ def main():
         if timelines.get(r["target"]):
             best = max(timelines[r["target"]], key=lambda x: x["alt"])
             st.info(f"⏱️ Giờ đề xuất: {best['time']} (GMT+7), độ cao cực đại {best['alt']:.1f}°")
-        render_guidance(r["target"], r["alt"], r["az"])
+        render_guidance(vn(r["target"]), r["alt"], r["az"])
         st.write(f"**🌟 Fun fact:** {FUN_FACTS.get(r['target'], 'Hãy tiếp tục khám phá vũ trụ!')}")
 
-    tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Planner", "📊 Tổng quan"])
+    tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan"])
     with tab1:
         st.plotly_chart(make_chart(rows, only_visible), use_container_width=True)
     with tab2:
