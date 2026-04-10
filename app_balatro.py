@@ -2,6 +2,788 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import csv
 import io
+import json
+import tempfile
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from skyfield.api import Loader, Star, Topos, load
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
+
+LOCAL_TZ = timezone(timedelta(hours=7))
+DEFAULT_LAT = 10.95
+DEFAULT_LON = 107.01
+PROFILE_STORE = "observer_profiles.json"
+
+LOCATION_PRESETS = {
+    "THCS Minh Duc (Dong Nai)": (10.95, 107.01),
+    "TP.HCM": (10.7769, 106.7009),
+    "Ha Noi": (21.0285, 105.8542),
+}
+
+OBJECT_CATEGORIES = {
+    "Mat Troi": "He Mat Troi",
+    "Mat Trang": "He Mat Troi",
+    "Sao Thuy": "He Mat Troi",
+    "Sao Kim": "He Mat Troi",
+    "Sao Hoa": "He Mat Troi",
+    "Sao Moc": "He Mat Troi",
+    "Sao Tho": "He Mat Troi",
+    "Polaris": "Sao sang",
+    "Sirius": "Sao sang",
+    "Vega": "Sao sang",
+    "Orion": "Chom sao",
+    "Cassiopeia": "Chom sao",
+    "Andromeda": "Thien ha",
+}
+
+FUN_FACTS = {
+    "Mat Troi": "Anh sang Mat Troi den Trai Dat sau khoang 8 phut 20 giay.",
+    "Mat Trang": "Mat Trang dang roi xa Trai Dat khoang 3.8 cm moi nam.",
+    "Sao Hoa": "Sao Hoa co Olympus Mons, nui lua lon nhat He Mat Troi.",
+    "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
+}
+
+
+def apply_theme():
+    st.markdown(
+        """
+    <style>
+    .stApp { background: linear-gradient(180deg, #0f172a 0%, #111827 100%); color: #e5e7eb; }
+    .block-container { max-width: 1200px; padding-top: 1.5rem; }
+    .guide { background: rgba(6, 78, 59, 0.25); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
+    .warn { background: rgba(127, 29, 29, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+
+def safe_json_load(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def safe_json_save(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+@st.cache_resource(show_spinner=False)
+def get_resources():
+    try:
+        planets = load("de421.bsp")
+        ts = load.timescale()
+        return planets, planets["earth"], ts
+    except Exception:
+        cache_dir = Path(tempfile.gettempdir()) / "skyfield_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        loader = Loader(str(cache_dir))
+        planets = loader("de421.bsp")
+        ts = loader.timescale()
+        return planets, planets["earth"], ts
+
+
+def build_db(planets):
+    return {
+        "Mat Troi": planets["sun"],
+        "Mat Trang": planets["moon"],
+        "Sao Thuy": planets["mercury"],
+        "Sao Kim": planets["venus"],
+        "Sao Hoa": planets["mars"],
+        "Sao Moc": planets["jupiter barycenter"],
+        "Sao Tho": planets["saturn barycenter"],
+        "Orion": Star(ra_hours=5.5, dec_degrees=0.0),
+        "Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
+        "Polaris": Star(ra_hours=2.53, dec_degrees=89.26),
+        "Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
+        "Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
+        "Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
+    }
+
+
+def compute_alt_az(obj, observer, t):
+    astrometric = observer.at(t).observe(obj)
+    alt, az, distance = astrometric.apparent().altaz()
+    return alt.degrees, az.degrees, distance
+
+
+@st.cache_data(ttl=90, show_spinner=False)
+def snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket):
+    planets, earth, ts = get_resources()
+    db = build_db(planets)
+    observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
+    now_utc = datetime.now(timezone.utc)
+    t_now = ts.now()
+
+    rows = []
+    timelines = {}
+    planner = []
+
+    for name, obj in db.items():
+        alt, az, _ = compute_alt_az(obj, observer, t_now)
+        visible = alt > 0
+        rows.append(
+            {
+                "Thien the": name,
+                "Nhom": OBJECT_CATEGORIES.get(name, "Khac"),
+                "Altitude": round(alt, 1),
+                "Azimuth": round(az, 1),
+                "Trang thai": "Co the quan sat" if visible else "Duoi chan troi",
+                "visible": visible,
+            }
+        )
+
+        timeline = []
+        for m in range(0, horizon_hours * 60 + 1, step_minutes):
+            dt_utc = now_utc + timedelta(minutes=m)
+            alt_m, az_m, _ = compute_alt_az(obj, observer, ts.from_datetime(dt_utc))
+            timeline.append({"time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"), "alt": round(alt_m, 2), "az": round(az_m, 2)})
+        timelines[name] = timeline
+
+        best = max(timeline, key=lambda x: x["alt"])
+        vis_pct = round(100 * len([x for x in timeline if x["alt"] > 0]) / len(timeline), 1)
+        score = round(best["alt"] * 0.7 + vis_pct * 0.3, 2)
+        planner.append(
+            {
+                "Muc tieu": name,
+                "Nhom": OBJECT_CATEGORIES.get(name, "Khac"),
+                "Diem uu tien": score,
+                "Do cao cuc dai": best["alt"],
+                "Ty le nhin thay (%)": vis_pct,
+                "Gio nen ngam": best["time"],
+            }
+        )
+
+    planner = sorted(planner, key=lambda x: x["Diem uu tien"], reverse=True)[:8]
+    return db, observer, ts, rows, timelines, planner
+
+
+def make_chart(rows, only_visible):
+    fig = go.Figure()
+    for r in rows:
+        if only_visible and not r["visible"]:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=[r["Azimuth"]],
+                y=[r["Altitude"]],
+                mode="markers+text",
+                text=[r["Thien the"]],
+                textposition="top center",
+                marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"),
+                showlegend=False,
+            )
+        )
+    fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb")
+    fig.update_layout(height=460, title="Ban do sao", xaxis_title="Phuong vi (do)", yaxis_title="Do cao (do)")
+    return fig
+
+
+def to_csv_bytes(rows):
+    if not rows:
+        return b""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue().encode("utf-8")
+
+
+def to_excel_bytes(df):
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="data")
+    return out.getvalue()
+
+
+def render_guidance(target, alt, az):
+    st.markdown("### Huong dan chinh kinh sau khi do tim")
+    if alt > 0:
+        text = (
+            f"1) Xoay chan de huong **{az:.0f} do** (Bac = 0 do).\n\n"
+            f"2) Nang ong kinh len **{alt:.0f} do**.\n\n"
+            "3) Can tam bang kinh ngam, sau do focus bang vong chinh net."
+        )
+        st.markdown(f"<div class='guide'>{text}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='warn'>Muc tieu dang duoi chan troi, hay doi them va thu lai.</div>", unsafe_allow_html=True)
+
+
+def sidebar():
+    with st.sidebar:
+        st.header("Cau hinh quan sat")
+        profiles = safe_json_load(PROFILE_STORE, {})
+        profile = st.selectbox("Profile da luu", ["-- Khong dung --"] + list(profiles.keys()), key="profile")
+        if profile != "-- Khong dung --":
+            p = profiles[profile]
+            d_lat = float(p.get("lat", DEFAULT_LAT))
+            d_lon = float(p.get("lon", DEFAULT_LON))
+        else:
+            d_lat, d_lon = DEFAULT_LAT, DEFAULT_LON
+
+        preset = st.selectbox("Preset dia diem", list(LOCATION_PRESETS.keys()) + ["Tuy chinh"], key="preset")
+        if preset != "Tuy chinh":
+            station = preset
+            d_lat, d_lon = LOCATION_PRESETS[preset]
+        else:
+            station = st.text_input("Ten tram", "Tram tuy chinh")
+
+        lat = st.number_input("Vi do", -90.0, 90.0, d_lat, 0.001, format="%.4f")
+        lon = st.number_input("Kinh do", -180.0, 180.0, d_lon, 0.001, format="%.4f")
+        h = st.slider("Khung du bao (gio)", 3, 24, 12, 1)
+        step = st.slider("Buoc tinh (phut)", 5, 60, 15, 5)
+
+        save_name = st.text_input("Luu profile voi ten", station)
+        c1, c2 = st.columns(2)
+        if c1.button("Luu", use_container_width=True) and save_name.strip():
+            profiles[save_name.strip()] = {"lat": lat, "lon": lon}
+            safe_json_save(PROFILE_STORE, profiles)
+            st.success("Da luu")
+        if c2.button("Xoa", use_container_width=True) and profile != "-- Khong dung --":
+            profiles.pop(profile, None)
+            safe_json_save(PROFILE_STORE, profiles)
+            st.warning("Da xoa")
+    return station, lat, lon, h, step
+
+
+def main():
+    st.set_page_config(page_title="Kinh Thien Van STEM", page_icon="🌌", layout="wide")
+    apply_theme()
+    st.title("Kinh Thien Van STEM")
+    st.caption("Ban single-file on dinh, de dung, de deploy")
+
+    station, lat, lon, horizon_hours, step_minutes = sidebar()
+    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
+
+    try:
+        db, observer, ts, rows, timelines, planner = snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket)
+    except Exception as exc:
+        st.error("Khong tai duoc du lieu thien van.")
+        st.code(str(exc))
+        st.stop()
+
+    st.write(f"**Tram:** {station} | **Toa do:** {lat:.4f}, {lon:.4f} | **Gio:** {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
+
+    k1, k2, k3 = st.columns(3)
+    vis_count = len([r for r in rows if r["visible"]])
+    k1.metric("Dang quan sat duoc", f"{vis_count}/{len(rows)}")
+    k2.metric("Muc tieu planner", len(planner))
+    k3.metric("Tong doi tuong", len(rows))
+
+    f1, f2, f3 = st.columns([2, 2, 1])
+    group = f1.selectbox("Loc nhom", ["Tat ca", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="filter_group")
+    search = f2.text_input("Tim thien the", "", key="filter_search")
+    only_visible = f3.toggle("Chi hien dang thay", False, key="filter_visible")
+
+    names = [
+        n for n in db.keys()
+        if (group == "Tat ca" or OBJECT_CATEGORIES.get(n, "") == group) and (search.strip().lower() in n.lower())
+    ]
+    if not names:
+        names = list(db.keys())
+    target = st.selectbox("Chon thien the", names, key="target")
+
+    if st_autorefresh is not None and st.toggle("Tu dong cap nhat", False, key="toggle_refresh"):
+        sec = st.slider("Moi bao nhieu giay", 10, 120, 20, 5, key="refresh_sec")
+        st_autorefresh(interval=sec * 1000, key="refresh_timer")
+
+    if "scan" not in st.session_state:
+        st.session_state.scan = None
+
+    if st.button("Do tim va quan sat", use_container_width=True):
+        alt, az, dist = compute_alt_az(db[target], observer, ts.now())
+        distance_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoang cach lon"
+        st.session_state.scan = {"target": target, "alt": alt, "az": az, "dist": distance_text}
+
+    if st.session_state.scan:
+        r = st.session_state.scan
+        m1, m2 = st.columns(2)
+        m1.metric("Do cao", f"{r['alt']:.1f} do")
+        m2.metric("Phuong vi", f"{r['az']:.1f} do")
+        st.info(f"Khoang cach uoc tinh: {r['dist']}")
+        tline = timelines.get(r["target"], [])
+        if tline:
+            best = max(tline, key=lambda x: x["alt"])
+            st.info(f"Gio de xuat: {best['time']} (GMT+7), do cao cuc dai {best['alt']:.1f} do")
+        render_guidance(r["target"], r["alt"], r["az"])
+        st.write(f"**Fun fact:** {FUN_FACTS.get(r['target'], 'Hay tiep tuc kham pha vu tru!')}")
+
+    tab1, tab2, tab3 = st.tabs(["Ban do sao", "Planner", "Tong quan"])
+    with tab1:
+        st.plotly_chart(make_chart(rows, only_visible), use_container_width=True)
+    with tab2:
+        cmp_targets = st.multiselect("So sanh toi da 4 muc tieu", names, default=[target], key="cmp")[:4]
+        if cmp_targets:
+            fig = go.Figure()
+            x_axis = None
+            for n in cmp_targets:
+                tline = timelines.get(n, [])
+                if not tline:
+                    continue
+                if x_axis is None:
+                    x_axis = [p["time"] for p in tline]
+                fig.add_trace(go.Scatter(x=x_axis, y=[p["alt"] for p in tline], mode="lines+markers", name=n))
+            fig.update_layout(title="Do cao theo thoi gian", xaxis_title="Gio", yaxis_title="Altitude (do)", height=420)
+            st.plotly_chart(fig, use_container_width=True)
+        planner_df = pd.DataFrame(planner)
+        st.dataframe(planner_df, use_container_width=True, hide_index=True)
+        st.download_button("Tai planner CSV", data=to_csv_bytes(planner), file_name="planner.csv", mime="text/csv")
+        st.download_button(
+            "Tai planner Excel",
+            data=to_excel_bytes(planner_df),
+            file_name="planner.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    with tab3:
+        summary_rows = [{k: v for k, v in r.items() if k != "visible"} for r in rows]
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        st.download_button("Tai tong quan CSV", data=to_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
+        st.download_button(
+            "Tai tong quan Excel",
+            data=to_excel_bytes(summary_df),
+            file_name="summary.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+
+if __name__ == "__main__":
+    main()
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import csv
+import io
+import json
+import tempfile
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from skyfield.api import Loader, Star, Topos, load
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
+# ===== Cau hinh chung =====
+LOCAL_TZ = timezone(timedelta(hours=7))
+DEFAULT_LAT = 10.9500
+DEFAULT_LON = 107.0100
+PROFILE_STORE = "observer_profiles.json"
+
+LOCATION_PRESETS = {
+    "THCS Minh Duc (Dong Nai)": (10.9500, 107.0100),
+    "TP.HCM": (10.7769, 106.7009),
+    "Ha Noi": (21.0285, 105.8542),
+    "Da Nang": (16.0544, 108.2022),
+    "Can Tho": (10.0452, 105.7469),
+}
+
+OBJECT_CATEGORIES = {
+    "Mat Troi": "He Mat Troi",
+    "Mat Trang": "He Mat Troi",
+    "Sao Thuy": "He Mat Troi",
+    "Sao Kim": "He Mat Troi",
+    "Sao Hoa": "He Mat Troi",
+    "Sao Moc": "He Mat Troi",
+    "Sao Tho": "He Mat Troi",
+    "Sao Thien Vuong": "He Mat Troi",
+    "Sao Hai Vuong": "He Mat Troi",
+    "Polaris": "Sao sang",
+    "Sirius": "Sao sang",
+    "Vega": "Sao sang",
+    "Betelgeuse": "Sao sang",
+    "Orion": "Chom sao",
+    "Ursa Major": "Chom sao",
+    "Cassiopeia": "Chom sao",
+    "Andromeda": "Thien ha",
+}
+
+FUN_FACTS = {
+    "Mat Troi": "Anh sang Mat Troi mat khoang 8 phut 20 giay de den Trai Dat.",
+    "Mat Trang": "Mat Trang dang roi xa Trai Dat khoang 3.8 cm moi nam.",
+    "Sao Hoa": "Sao Hoa co nui lua Olympus Mons, rat lon trong He Mat Troi.",
+    "Sao Moc": "Sao Moc co Con bao Lon Do ton tai hang tram nam.",
+    "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
+}
+
+
+def apply_theme():
+    st.markdown(
+        """
+    <style>
+    .stApp { background: linear-gradient(180deg, #0f172a 0%, #111827 100%); color: #e5e7eb; }
+    .block-container { max-width: 1200px; padding-top: 1.8rem; }
+    h1, h2, h3 { color: #e0f2fe; }
+    .card { background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(125, 211, 252, 0.25); border-radius: 14px; padding: 14px 16px; margin: 10px 0; }
+    .guide { background: rgba(6, 78, 59, 0.25); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 12px 14px; margin: 10px 0; }
+    .warn { background: rgba(127, 29, 29, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 12px; padding: 12px 14px; margin: 10px 0; }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+
+def safe_json_load(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def safe_json_save(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+@st.cache_resource(show_spinner=False)
+def get_resources():
+    errors = []
+    try:
+        planets = load("de421.bsp")
+        ts = load.timescale()
+        return planets, planets["earth"], ts
+    except Exception as exc:
+        errors.append(f"default-loader: {exc}")
+    try:
+        cache_dir = Path(tempfile.gettempdir()) / "skyfield_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        loader = Loader(str(cache_dir))
+        planets = loader("de421.bsp")
+        ts = loader.timescale()
+        return planets, planets["earth"], ts
+    except Exception as exc:
+        errors.append(f"tmp-loader: {exc}")
+    raise RuntimeError("Khong tai duoc de421.bsp. " + " | ".join(errors))
+
+
+def build_db(planets):
+    return {
+        "Mat Troi": planets["sun"],
+        "Mat Trang": planets["moon"],
+        "Sao Thuy": planets["mercury"],
+        "Sao Kim": planets["venus"],
+        "Sao Hoa": planets["mars"],
+        "Sao Moc": planets["jupiter barycenter"],
+        "Sao Tho": planets["saturn barycenter"],
+        "Sao Thien Vuong": planets["uranus barycenter"],
+        "Sao Hai Vuong": planets["neptune barycenter"],
+        "Orion": Star(ra_hours=5.5, dec_degrees=0.0),
+        "Ursa Major": Star(ra_hours=11.0, dec_degrees=50.0),
+        "Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
+        "Polaris": Star(ra_hours=2.53, dec_degrees=89.26),
+        "Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
+        "Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
+        "Betelgeuse": Star(ra_hours=5.9195, dec_degrees=7.4073),
+        "Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
+    }
+
+
+def compute_alt_az(obj, observer, t):
+    astrometric = observer.at(t).observe(obj)
+    alt, az, distance = astrometric.apparent().altaz()
+    return alt.degrees, az.degrees, distance
+
+
+@st.cache_data(ttl=90, show_spinner=False)
+def build_snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket):
+    planets, earth, ts = get_resources()
+    db = build_db(planets)
+    observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
+    t_now = ts.now()
+    now_utc = datetime.now(timezone.utc)
+
+    rows = []
+    timeline_map = {}
+    planner = []
+
+    for name, obj in db.items():
+        alt, az, _ = compute_alt_az(obj, observer, t_now)
+        visible = alt > 0
+        rows.append(
+            {
+                "Thien the": name,
+                "Nhom": OBJECT_CATEGORIES.get(name, "Khac"),
+                "Altitude": round(alt, 1),
+                "Azimuth": round(az, 1),
+                "Trang thai": "Co the quan sat" if visible else "Duoi chan troi",
+                "visible": visible,
+            }
+        )
+        timeline = []
+        for m in range(0, horizon_hours * 60 + 1, step_minutes):
+            dt_utc = now_utc + timedelta(minutes=m)
+            alt_m, az_m, _ = compute_alt_az(obj, observer, ts.from_datetime(dt_utc))
+            timeline.append({"time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"), "alt": round(alt_m, 2), "az": round(az_m, 2)})
+        timeline_map[name] = timeline
+
+        if len(timeline) > 0:
+            best = max(timeline, key=lambda x: x["alt"])
+            vis_pct = round(100 * len([x for x in timeline if x["alt"] > 0]) / len(timeline), 1)
+            score = round(best["alt"] * 0.7 + vis_pct * 0.3, 2)
+            planner.append(
+                {
+                    "Muc tieu": name,
+                    "Nhom": OBJECT_CATEGORIES.get(name, "Khac"),
+                    "Diem uu tien": score,
+                    "Do cao cuc dai": best["alt"],
+                    "Ty le nhin thay (%)": vis_pct,
+                    "Gio nen ngam": best["time"],
+                }
+            )
+
+    planner = sorted(planner, key=lambda x: x["Diem uu tien"], reverse=True)[:8]
+    return db, observer, ts, rows, planner, timeline_map
+
+
+def make_sky_chart(rows, only_visible=False):
+    fig = go.Figure()
+    for row in rows:
+        if only_visible and not row["visible"]:
+            continue
+        name = row["Thien the"]
+        alt = row["Altitude"]
+        az = row["Azimuth"]
+        fig.add_trace(
+            go.Scatter(
+                x=[az],
+                y=[alt],
+                mode="markers+text",
+                text=[name],
+                textposition="top center",
+                marker=dict(size=14 if row["visible"] else 9, color="#22d3ee" if row["visible"] else "#64748b"),
+                name=name,
+                showlegend=False,
+            )
+        )
+    fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb")
+    fig.update_layout(title="Ban do sao", xaxis_title="Phuong vi (do)", yaxis_title="Do cao (do)", height=480)
+    return fig
+
+
+def csv_bytes(rows):
+    if not rows:
+        return b""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
+
+
+def excel_bytes(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="data")
+    return output.getvalue()
+
+
+def sidebar_controls():
+    with st.sidebar:
+        st.header("Cau hinh quan sat")
+        profiles = safe_json_load(PROFILE_STORE, {})
+        selected_profile = st.selectbox("Profile da luu", ["-- Khong dung --"] + list(profiles.keys()), key="profile")
+        if selected_profile != "-- Khong dung --":
+            p = profiles[selected_profile]
+            default_lat = float(p.get("lat", DEFAULT_LAT))
+            default_lon = float(p.get("lon", DEFAULT_LON))
+            default_name = selected_profile
+        else:
+            default_lat, default_lon, default_name = DEFAULT_LAT, DEFAULT_LON, "Tram tuy chinh"
+
+        preset = st.selectbox("Preset dia diem", list(LOCATION_PRESETS.keys()) + ["Tuy chinh"], key="preset")
+        if preset != "Tuy chinh":
+            station_name = preset
+            default_lat, default_lon = LOCATION_PRESETS[preset]
+        else:
+            station_name = st.text_input("Ten tram", value=default_name)
+
+        lat = st.number_input("Vi do", min_value=-90.0, max_value=90.0, value=default_lat, step=0.001, format="%.4f")
+        lon = st.number_input("Kinh do", min_value=-180.0, max_value=180.0, value=default_lon, step=0.001, format="%.4f")
+        horizon_hours = st.slider("Khung du bao (gio)", 3, 24, 12, 1)
+        step_minutes = st.slider("Buoc tinh (phut)", 5, 60, 15, 5)
+
+        save_name = st.text_input("Luu profile voi ten", value=station_name)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Luu profile", use_container_width=True) and save_name.strip():
+                profiles[save_name.strip()] = {"lat": lat, "lon": lon}
+                safe_json_save(PROFILE_STORE, profiles)
+                st.success("Da luu profile")
+        with c2:
+            if st.button("Xoa profile", use_container_width=True) and selected_profile != "-- Khong dung --":
+                profiles.pop(selected_profile, None)
+                safe_json_save(PROFILE_STORE, profiles)
+                st.warning("Da xoa profile")
+
+    return station_name, lat, lon, horizon_hours, step_minutes
+
+
+def render_guidance(target_name, alt, az):
+    st.markdown("### Huong dan chinh kinh sau khi do tim")
+    if alt > 0:
+        guide = (
+            f"1) Xoay chan de kinh huong **{az:.0f} do** (Bac = 0 do).\n\n"
+            f"2) Nang ong kinh len goc **{alt:.0f} do**.\n\n"
+            "3) Nhin qua kinh ngam truoc, can tam vao muc tieu.\n\n"
+            "4) Chuyen sang thi kinh chinh, tinh net bang vong focus."
+        )
+        st.markdown(f"<div class='guide'>{guide}</div>", unsafe_allow_html=True)
+        st.success(f"{target_name} dang o tren bau troi, co the quan sat ngay.")
+    else:
+        st.markdown(
+            "<div class='warn'>Muc tieu dang duoi chan troi. Hay xem gio de xuat trong Planner roi thu lai.</div>",
+            unsafe_allow_html=True,
+        )
+
+
+def main():
+    st.set_page_config(page_title="Kinh Thien Van Thong Minh", page_icon="🌌", layout="wide")
+    apply_theme()
+    st.title("Kinh Thien Van Thong Minh")
+    st.markdown("<p class='subtitle'>Giao dien gon, ro rang, de dung cho du an STEM</p>", unsafe_allow_html=True)
+
+    station_name, lat, lon, horizon_hours, step_minutes = sidebar_controls()
+    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
+
+    try:
+        db, observer, ts, rows, planner_rows, timelines = build_snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket)
+    except Exception as exc:
+        st.error("Khong tai duoc du lieu thien van.")
+        st.code(str(exc))
+        st.stop()
+
+    st.caption(
+        f"Tram: {station_name} | Toa do: {lat:.4f}, {lon:.4f} | Gio dia phuong: {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}"
+    )
+
+    c1, c2, c3 = st.columns(3)
+    visible_count = len([r for r in rows if r["visible"]])
+    c1.metric("Dang quan sat duoc", f"{visible_count}/{len(rows)}")
+    c2.metric("Muc tieu planner", len(planner_rows))
+    c3.metric("Du lieu thien the", len(rows))
+
+    groups = ["Tat ca", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"]
+    f1, f2, f3 = st.columns([2, 2, 1])
+    group = f1.selectbox("Loc nhom", groups, key="filter_group")
+    search = f2.text_input("Tim muc tieu", value="", placeholder="VD: Sao Hoa", key="filter_search")
+    only_visible = f3.toggle("Chi hien dang thay", value=False, key="filter_visible")
+
+    filtered = [
+        name
+        for name in db.keys()
+        if (group == "Tat ca" or OBJECT_CATEGORIES.get(name, "") == group)
+        and (search.strip().lower() in name.lower())
+    ]
+    if not filtered:
+        filtered = list(db.keys())
+    target = st.selectbox("Chon thien the", filtered, key="target_main")
+
+    if st_autorefresh is not None and st.toggle("Tu dong cap nhat", value=False, key="toggle_refresh"):
+        sec = st.slider("Chu ky lam moi (giay)", 10, 120, 20, 5, key="refresh_interval")
+        st_autorefresh(interval=sec * 1000, key="auto_refresh_key")
+
+    if "scan_result" not in st.session_state:
+        st.session_state.scan_result = None
+
+    if st.button("Do tim va quan sat", use_container_width=True):
+        alt, az, dist = tinh_toan_vi_tri(target, db, observer, ts)
+        st.session_state.scan_result = {"target": target, "alt": alt, "az": az, "dist": dist}
+
+    if st.session_state.scan_result:
+        r = st.session_state.scan_result
+        m1, m2 = st.columns(2)
+        m1.metric("Do cao", f"{r['alt']:.1f} do")
+        m2.metric("Phuong vi", f"{r['az']:.1f} do")
+        st.info(f"Khoang cach uoc tinh: {r['dist']}")
+
+        target_timeline = timelines.get(r["target"], [])
+        if target_timeline:
+            best = max(target_timeline, key=lambda x: x["alt"])
+            st.info(f"Gio de xuat quan sat: {best['time']} (GMT+7), do cao cuc dai ~ {best['alt']:.1f} do")
+
+        render_guidance(r["target"], r["alt"], r["az"])
+        st.markdown(
+            f"<div class='card'><b>Fun fact:</b> {FUN_FACTS.get(r['target'], 'Hay tiep tuc kham pha bau troi!')}</div>",
+            unsafe_allow_html=True,
+        )
+
+    tabs = st.tabs(["Ban do sao", "Planner", "Tong quan", "STEM Lab"])
+    with tabs[0]:
+        st.plotly_chart(make_sky_chart(rows, only_visible=only_visible), use_container_width=True)
+
+    with tabs[1]:
+        cmp_targets = st.multiselect("So sanh toi da 4 muc tieu", filtered, default=[target], key="cmp_targets")[:4]
+        if cmp_targets:
+            fig = go.Figure()
+            x_axis = None
+            for name in cmp_targets:
+                tline = timelines.get(name, [])
+                if not tline:
+                    continue
+                if x_axis is None:
+                    x_axis = [p["time"] for p in tline]
+                fig.add_trace(go.Scatter(x=x_axis, y=[p["alt"] for p in tline], mode="lines+markers", name=name))
+            fig.update_layout(title="Do cao theo thoi gian", xaxis_title="Gio", yaxis_title="Altitude (do)", height=420)
+            st.plotly_chart(fig, use_container_width=True)
+
+        planner_df = pd.DataFrame(planner_rows)
+        st.dataframe(planner_df, use_container_width=True, hide_index=True)
+        st.download_button("Tai Planner CSV", data=csv_bytes(planner_rows), file_name="planner.csv", mime="text/csv")
+        st.download_button(
+            "Tai Planner Excel",
+            data=excel_bytes(planner_df),
+            file_name="planner.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    with tabs[2]:
+        summary_rows = [{k: v for k, v in row.items() if k != "visible"} for row in rows]
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        st.download_button("Tai Tong quan CSV", data=csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
+        st.download_button(
+            "Tai Tong quan Excel",
+            data=excel_bytes(summary_df),
+            file_name="summary.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    with tabs[3]:
+        lab_target = st.selectbox("Hoc nhanh voi thien the", list(db.keys()), key="lab_target")
+        st.info(FUN_FACTS.get(lab_target, "Kham pha vu tru!"))
+        st.checkbox("Da chuan bi kinh va chan may", key="lab_c1")
+        st.checkbox("Da kiem tra pin/nguon dien", key="lab_c2")
+        st.checkbox("Da xac nhan toa do quan sat", key="lab_c3")
+        st.checkbox("Da xuat planner truoc khi di", key="lab_c4")
+
+    st.caption("Final upgrade single-file: ro rang, de dung, de deploy")
+
+
+if __name__ == "__main__":
+    main()
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import csv
+import io
 import tempfile
 
 import pandas as pd
