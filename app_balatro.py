@@ -193,93 +193,87 @@ def apply_modern_dark_theme():
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     .stApp {
-        background: radial-gradient(circle at 30% 20%, #1a0f35 0%, #0a051f 35%, #0c0022 70%, #000011 100%);
-        background-size: 250% 250%;
-        animation: cosmic-drift 25s ease infinite;
+        background: radial-gradient(circle at 20% -10%, #18223d 0%, #0d1428 45%, #090f1d 100%);
         font-family: 'Inter', system-ui, sans-serif;
-        color: #f0f9ff;
+        color: #e6edf7;
     }
     
-    @keyframes cosmic-drift {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    
-    /* Hiệu ứng sao lấp lánh nhẹ */
-    .stApp::before {
-        content: '';
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: radial-gradient(circle, rgba(255,255,255,0.9) 1px, transparent 0);
-        background-size: 80px 80px;
-        animation: twinkle 8s linear infinite;
-        opacity: 0.15;
-        pointer-events: none;
-        z-index: -1;
-    }
-    
-    @keyframes twinkle {
-        0%, 100% { opacity: 0.15; }
-        50% { opacity: 0.35; }
+    .block-container {
+        padding-top: 2rem;
+        max-width: 1200px;
     }
     
     h1 {
-        font-size: 3.4rem !important;
+        font-size: 2.6rem !important;
         font-weight: 700;
-        letter-spacing: -3px;
-        background: linear-gradient(90deg, #67e8f9, #c026d3, #67e8f9);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-shadow: 0 0 30px rgba(103,232,249,0.6);
+        letter-spacing: -1px;
+        color: #dbeafe !important;
+        text-shadow: none;
     }
     
-    .subtitle { font-size: 1.4rem; color: #94a3b8; text-align: center; font-weight: 500; }
+    .subtitle {
+        font-size: 1rem;
+        color: #9fb0cc;
+        text-align: center;
+        font-weight: 500;
+        margin-top: -10px;
+        margin-bottom: 8px;
+    }
+    
+    .section-card {
+        background: linear-gradient(180deg, rgba(20, 30, 52, 0.85) 0%, rgba(12, 20, 38, 0.9) 100%);
+        border: 1px solid rgba(125, 160, 220, 0.22);
+        border-radius: 16px;
+        padding: 14px 18px;
+        margin: 8px 0 16px;
+    }
     
     [data-testid="stMetric"] {
-        background: rgba(15, 23, 42, 0.85) !important;
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(103, 232, 249, 0.3) !important;
-        border-radius: 24px !important;
-        padding: 28px 24px !important;
-        box-shadow: 0 15px 35px -10px rgba(103, 232, 249, 0.4),
-                    inset 0 2px 0 rgba(255,255,255,0.15);
+        background: rgba(16, 26, 44, 0.75) !important;
+        border: 1px solid rgba(125, 160, 220, 0.3) !important;
+        border-radius: 16px !important;
+        padding: 18px !important;
+        box-shadow: none !important;
     }
     
-    [data-testid="stMetricValue"] { font-size: 3.2rem !important; color: #67e8f9 !important; text-shadow: 0 0 20px rgba(103,232,249,0.7); }
+    [data-testid="stMetricLabel"] { color: #9fb0cc !important; }
+    [data-testid="stMetricValue"] { font-size: 2.1rem !important; color: #7dd3fc !important; }
     
     .stButton > button {
-        background: linear-gradient(90deg, #67e8f9, #c026d3) !important;
-        color: #0a051f !important;
-        font-size: 1.55rem !important;
-        font-weight: 700;
-        padding: 20px 50px !important;
-        border-radius: 9999px !important;
-        box-shadow: 0 15px 30px -8px rgba(103, 232, 249, 0.6);
-        animation: buttonPulse 2s infinite ease-in-out;
+        background: #38bdf8 !important;
+        color: #06101f !important;
+        font-size: 1rem !important;
+        font-weight: 700 !important;
+        border-radius: 12px !important;
+        border: none !important;
+        padding: 0.65rem 1rem !important;
     }
     
-    @keyframes buttonPulse {
-        0%, 100% { box-shadow: 0 15px 30px -8px rgba(103, 232, 249, 0.6); }
-        50% { box-shadow: 0 20px 40px -8px rgba(192, 38, 211, 0.7); }
+    .stButton > button:hover {
+        background: #0ea5e9 !important;
+        color: #f8fbff !important;
     }
     
-    .stSelectbox div[data-baseweb="select"] {
-        background-color: rgba(15, 23, 42, 0.9) !important;
-        border: 2px solid rgba(103, 232, 249, 0.5) !important;
-        border-radius: 18px !important;
-        color: #f0f9ff !important;
-        font-size: 1.3rem !important;
+    .stSelectbox div[data-baseweb="select"],
+    div[data-baseweb="input"],
+    div[data-baseweb="base-input"] {
+        background-color: rgba(11, 20, 37, 0.95) !important;
+        border: 1px solid rgba(125, 160, 220, 0.35) !important;
+        border-radius: 12px !important;
+        color: #e6edf7 !important;
     }
     
-    /* Fun Fact Card */
     .fun-fact {
-        background: linear-gradient(90deg, rgba(15,23,42,0.95), rgba(192,38,211,0.15));
-        border: 2px solid #67e8f9;
-        border-radius: 20px;
-        padding: 20px 28px;
-        box-shadow: 0 10px 30px -10px rgba(103,232,249,0.5);
-        margin: 25px 0;
+        background: rgba(12, 22, 39, 0.85);
+        border: 1px solid rgba(125, 160, 220, 0.35);
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin: 16px 0 8px;
+    }
+
+    [data-testid="stDataFrame"] {
+        border: 1px solid rgba(125, 160, 220, 0.25);
+        border-radius: 12px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -300,6 +294,7 @@ except Exception:
 db_thien_the = build_celestial_db(planets)
 observer = earth + THCS_MINH_DUC
 
+st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 ctl_col1, ctl_col2, ctl_col3 = st.columns([2, 1, 1])
 with ctl_col1:
     lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU CỦA BẠN:", list(db_thien_the.keys()), label_visibility="visible")
@@ -307,6 +302,7 @@ with ctl_col2:
     only_visible = st.toggle("Chỉ hiện mục đang nhìn thấy", value=False)
 with ctl_col3:
     auto_refresh = st.toggle("Tự động cập nhật", value=False)
+st.markdown("</div>", unsafe_allow_html=True)
 
 refresh_seconds = 20
 if auto_refresh:
@@ -368,8 +364,10 @@ if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True)
 st.markdown("---")
 st.subheader("🌌 BẢN ĐỒ SAO TƯƠNG TÁC TOÀN BẦU TRỜI")
 st.caption("Di chuột vào các điểm để xem thông tin chi tiết • Xanh = Có thể quan sát")
+st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 fig, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=only_visible)
 st.plotly_chart(fig, use_container_width=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("---")
 st.subheader("📋 Bảng tóm tắt quan sát nhanh")
