@@ -6,7 +6,8 @@ import streamlit as st
 from skyfield.api import Star, Topos, load
 
 # ====================== CẤU HÌNH VỊ TRÍ QUAN SÁT ======================
-THCS_MINH_DUC = Topos("10.9500 N", "107.0100 E")
+DEFAULT_LAT = 10.9500
+DEFAULT_LON = 107.0100
 LOCAL_TZ = timezone(timedelta(hours=7))
 SOLAR_SYSTEM_KEYS = {
     "☀️ MẶT TRỜI",
@@ -18,6 +19,29 @@ SOLAR_SYSTEM_KEYS = {
     "🪐 Sao Thổ (Saturn)",
     "🪐 Sao Thiên Vương (Uranus)",
     "🪐 Sao Hải Vương (Neptune)",
+}
+OBJECT_CATEGORIES = {
+    "☀️ MẶT TRỜI": "Hệ Mặt Trời",
+    "🌕 MẶT TRĂNG": "Hệ Mặt Trời",
+    "🪐 Sao Thủy (Mercury)": "Hệ Mặt Trời",
+    "🪐 Sao Kim (Venus)": "Hệ Mặt Trời",
+    "🪐 Sao Hỏa (Mars)": "Hệ Mặt Trời",
+    "🪐 Sao Mộc (Jupiter)": "Hệ Mặt Trời",
+    "🪐 Sao Thổ (Saturn)": "Hệ Mặt Trời",
+    "🪐 Sao Thiên Vương (Uranus)": "Hệ Mặt Trời",
+    "🪐 Sao Hải Vương (Neptune)": "Hệ Mặt Trời",
+    "✨ Chòm Gấu Lớn (Ursa Major)": "Chòm sao",
+    "✨ Chòm Thợ Săn (Orion)": "Chòm sao",
+    "✨ Chòm Bọ Cạp (Scorpius)": "Chòm sao",
+    "✨ Chòm Cassiopeia": "Chòm sao",
+    "✨ Chòm Sư Tử (Leo)": "Chòm sao",
+    "✨ Chòm Thiên Nga (Cygnus)": "Chòm sao",
+    "⭐️ Sao Bắc Cực (Polaris)": "Sao sáng",
+    "⭐️ Sao Sirius": "Sao sáng",
+    "⭐️ Sao Betelgeuse": "Sao sáng",
+    "⭐️ Sao Vega": "Sao sáng",
+    "🌀 Thiên hà Andromeda (M31)": "Thiên hà",
+    "🌀 Tâm Ngân Hà (Milky Way Center)": "Thiên hà",
 }
 
 
@@ -90,6 +114,10 @@ def compute_alt_az(obj, observer, t):
     return alt.degrees, az.degrees, distance
 
 
+def build_observer(earth, latitude, longitude):
+    return earth + Topos(latitude_degrees=latitude, longitude_degrees=longitude)
+
+
 def tinh_toan_vi_tri(thien_the_chon, db_thien_the, observer, ts):
     doi_tuong = db_thien_the[thien_the_chon]
     t = ts.now()
@@ -114,6 +142,33 @@ def best_observation_time(thien_the_chon, db_thien_the, observer, ts, horizon_ho
             best_alt = alt
             best_dt_utc = dt_utc
     return best_dt_utc.astimezone(LOCAL_TZ), best_alt
+
+
+def build_timeline_for_object(obj, observer, ts, horizon_hours=12, step_minutes=30):
+    now_utc = datetime.now(timezone.utc)
+    points = []
+    for minute in range(0, horizon_hours * 60 + 1, step_minutes):
+        dt_utc = now_utc + timedelta(minutes=minute)
+        t = ts.from_datetime(dt_utc)
+        alt, az, _ = compute_alt_az(obj, observer, t)
+        points.append({"time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"), "alt": round(alt, 2), "az": round(az, 2)})
+    return points
+
+
+def next_visibility_window(obj, observer, ts, horizon_hours=12, step_minutes=10):
+    now_utc = datetime.now(timezone.utc)
+    first_visible = None
+    first_hidden = None
+    for minute in range(0, horizon_hours * 60 + 1, step_minutes):
+        dt_utc = now_utc + timedelta(minutes=minute)
+        t = ts.from_datetime(dt_utc)
+        alt, _, _ = compute_alt_az(obj, observer, t)
+        if alt > 0 and first_visible is None:
+            first_visible = dt_utc
+        if first_visible is not None and alt <= 0:
+            first_hidden = dt_utc
+            break
+    return first_visible, first_hidden
 
 
 def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
@@ -153,6 +208,7 @@ def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
         rows.append(
             {
                 "Thiên thể": ten,
+                "Nhóm": OBJECT_CATEGORIES.get(ten, "Khác"),
                 "Altitude (°)": round(alt, 1),
                 "Azimuth (°)": round(az, 1),
                 "Trạng thái": "Có thể quan sát" if visible else "Dưới chân trời",
@@ -292,21 +348,48 @@ except Exception:
     st.stop()
 
 db_thien_the = build_celestial_db(planets)
-observer = earth + THCS_MINH_DUC
+with st.sidebar:
+    st.header("⚙️ Cấu hình quan sát")
+    station_name = st.text_input("Tên trạm", value="THCS Minh Đức")
+    latitude = st.number_input("Vĩ độ", min_value=-90.0, max_value=90.0, value=DEFAULT_LAT, step=0.001, format="%.4f")
+    longitude = st.number_input("Kinh độ", min_value=-180.0, max_value=180.0, value=DEFAULT_LON, step=0.001, format="%.4f")
+    horizon_hours = st.slider("Khung dự báo (giờ)", min_value=3, max_value=24, value=12, step=1)
+    plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
+
+observer = build_observer(earth, latitude, longitude)
+st.caption(
+    f"📍 Trạm: **{station_name}** • Vị trí: **{latitude:.4f}, {longitude:.4f}** • "
+    f"Giờ địa phương: **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')} (GMT+7)**"
+)
 
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-ctl_col1, ctl_col2, ctl_col3 = st.columns([2, 1, 1])
+ctl_col1, ctl_col2, ctl_col3, ctl_col4 = st.columns([2, 1, 1, 1])
 with ctl_col1:
-    lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU CỦA BẠN:", list(db_thien_the.keys()), label_visibility="visible")
+    category_choice = st.selectbox("Nhóm thiên thể", ["Tất cả", "Hệ Mặt Trời", "Chòm sao", "Sao sáng", "Thiên hà"])
 with ctl_col2:
-    only_visible = st.toggle("Chỉ hiện mục đang nhìn thấy", value=False)
+    search_text = st.text_input("Tìm nhanh", value="", placeholder="Ví dụ: Sirius")
 with ctl_col3:
+    only_visible = st.toggle("Chỉ hiện mục đang nhìn thấy", value=False)
+with ctl_col4:
     auto_refresh = st.toggle("Tự động cập nhật", value=False)
 st.markdown("</div>", unsafe_allow_html=True)
+
+filtered_names = []
+for name in db_thien_the:
+    in_category = category_choice == "Tất cả" or OBJECT_CATEGORIES.get(name) == category_choice
+    in_search = search_text.strip().lower() in name.lower()
+    if in_category and in_search:
+        filtered_names.append(name)
+if not filtered_names:
+    filtered_names = list(db_thien_the.keys())
+lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU CỦA BẠN:", filtered_names, label_visibility="visible")
 
 refresh_seconds = 20
 if auto_refresh:
     refresh_seconds = st.slider("Chu kỳ làm mới (giây)", min_value=10, max_value=120, value=20, step=5)
+
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
 
 if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True):
     try:
@@ -314,7 +397,13 @@ if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True)
     except Exception:
         st.error("Không thể tính vị trí thiên thể lúc này. Vui lòng thử lại sau vài giây.")
         st.stop()
+    st.session_state.last_result = {"name": lua_chon, "alt": alt, "az": az, "dist": khoang_cach_str}
 
+if st.session_state.last_result:
+    lua_chon = st.session_state.last_result["name"]
+    alt = st.session_state.last_result["alt"]
+    az = st.session_state.last_result["az"]
+    khoang_cach_str = st.session_state.last_result["dist"]
     col1, col2 = st.columns(2)
     with col1:
         st.metric(label="🌍 ĐỘ CAO (Altitude)", value=f"{alt:.1f}°")
@@ -333,9 +422,11 @@ if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True)
         unsafe_allow_html=True,
     )
 
-    best_time_local, best_alt = best_observation_time(lua_chon, db_thien_the, observer, ts)
+    best_time_local, best_alt = best_observation_time(
+        lua_chon, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
+    )
     st.info(
-        f"⏱️ Thời điểm đề xuất trong 12 giờ tới: **{best_time_local.strftime('%H:%M')} (GMT+7)** "
+        f"⏱️ Thời điểm đề xuất trong {horizon_hours} giờ tới: **{best_time_local.strftime('%H:%M')} (GMT+7)** "
         f"với độ cao cực đại khoảng **{best_alt:.1f}°**."
     )
 
@@ -361,20 +452,73 @@ if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True)
         unsafe_allow_html=True,
     )
 
-st.markdown("---")
-st.subheader("🌌 BẢN ĐỒ SAO TƯƠNG TÁC TOÀN BẦU TRỜI")
-st.caption("Di chuột vào các điểm để xem thông tin chi tiết • Xanh = Có thể quan sát")
-st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-fig, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=only_visible)
-st.plotly_chart(fig, use_container_width=True)
-st.markdown("</div>", unsafe_allow_html=True)
+tabs = st.tabs(["🌌 Bản đồ sao", "📅 Lập kế hoạch đêm", "📊 Tổng quan thông minh"])
 
-st.markdown("---")
-st.subheader("📋 Bảng tóm tắt quan sát nhanh")
-if summary_rows:
-    st.dataframe(summary_rows, use_container_width=True, hide_index=True)
-else:
-    st.warning("Không có thiên thể nào đang ở trên bầu trời với bộ lọc hiện tại.")
+with tabs[0]:
+    st.caption("Di chuột vào các điểm để xem thông tin chi tiết • Xanh = Có thể quan sát")
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    fig, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=only_visible)
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+with tabs[1]:
+    st.subheader("Lập kế hoạch theo thời gian")
+    compare_targets = st.multiselect(
+        "Chọn tối đa 4 thiên thể để so sánh độ cao",
+        filtered_names,
+        default=[lua_chon] if lua_chon in filtered_names else [],
+    )
+    compare_targets = compare_targets[:4]
+    if compare_targets:
+        time_axis = None
+        timeline_fig = go.Figure()
+        for target in compare_targets:
+            timeline = build_timeline_for_object(
+                db_thien_the[target], observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
+            )
+            if time_axis is None:
+                time_axis = [p["time"] for p in timeline]
+            timeline_fig.add_trace(
+                go.Scatter(x=time_axis, y=[p["alt"] for p in timeline], mode="lines+markers", name=target)
+            )
+        timeline_fig.add_hline(y=0, line_dash="dash", line_color="#94a3b8")
+        timeline_fig.update_layout(
+            title=f"Độ cao thiên thể theo thời gian ({horizon_hours}h tới)",
+            xaxis_title="Thời gian (GMT+7)",
+            yaxis_title="Altitude (°)",
+            height=420,
+        )
+        st.plotly_chart(timeline_fig, use_container_width=True)
+    else:
+        st.info("Hãy chọn ít nhất 1 thiên thể để xem biểu đồ lập kế hoạch.")
+
+with tabs[2]:
+    st.subheader("Bảng tóm tắt quan sát nhanh")
+    _, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False)
+    if summary_rows:
+        visible_count = len([row for row in summary_rows if row["Trạng thái"] == "Có thể quan sát"])
+        top_targets = sorted(summary_rows, key=lambda row: row["Altitude (°)"], reverse=True)[:5]
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.metric("Thiên thể đang quan sát được", f"{visible_count}/{len(summary_rows)}")
+        with col_b:
+            st.metric("Mục tiêu đang lọc", len(filtered_names))
+        st.dataframe(summary_rows, use_container_width=True, hide_index=True)
+        st.markdown("**Top 5 mục tiêu nên ưu tiên lúc này:**")
+        for idx, row in enumerate(top_targets, start=1):
+            st.write(f"{idx}. {row['Thiên thể']} — Alt {row['Altitude (°)']}° ({row['Trạng thái']})")
+        st.markdown("**Cửa sổ quan sát tiếp theo (mục đang chọn):**")
+        start_dt, end_dt = next_visibility_window(
+            db_thien_the[lua_chon], observer, ts, horizon_hours=horizon_hours, step_minutes=max(plan_step, 10)
+        )
+        if start_dt:
+            start_str = start_dt.astimezone(LOCAL_TZ).strftime("%H:%M")
+            end_str = end_dt.astimezone(LOCAL_TZ).strftime("%H:%M") if end_dt else "sau mốc dự báo"
+            st.success(f"{lua_chon}: bắt đầu thấy từ **{start_str}**, kéo dài đến **{end_str}** (GMT+7).")
+        else:
+            st.warning(f"{lua_chon} chưa lên chân trời trong {horizon_hours} giờ tới.")
+    else:
+        st.warning("Không có dữ liệu tóm tắt.")
 
 if auto_refresh:
     st.caption(f"Tự động làm mới mỗi {refresh_seconds} giây.")
