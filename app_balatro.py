@@ -220,13 +220,13 @@ def render_guidance(target, alt, az):
     st.markdown("### 🎯 Hướng dẫn chỉnh kính sau khi dò tìm")
     if alt > 0:
         text = (
-            f"1) Xoay chân đế hướng **{az:.0f}°** (Bắc = 0°).  \n"
-            f"2) Nâng ống kính lên **{alt:.0f}°**.  \n"
-            "3) Căn tâm bằng kính ngắm, sau đó chỉnh nét bằng vòng focus."
+            f"1) Xoay chân đế hướng {az:.0f}° (Bắc = 0°).  \n"
+            f"2) Nâng ống kính lên {alt:.0f}°.  \n"
+            "3) Căn tâm bằng kính ngắm, chúc mừng bạn !."
         )
         st.markdown(f"<div class='guide'>{text}</div>", unsafe_allow_html=True)
     else:
-        st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời, hãy đợi thêm và thử lại.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời,không thể quan sát, hãy đợi thêm và thử lại.</div>", unsafe_allow_html=True)
 
 
 def sidebar():
@@ -250,7 +250,7 @@ def main():
     st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🔭", layout="wide")
     apply_theme()
     st.title("🔭 Kính Thiên Văn STEM")
-    st.caption("🌌 Giao diện rõ ràng • Dễ dùng trong lớp học STEM • Quan sát theo thời gian thực")
+    st.caption("Hỗ trợ thiên  • Quan sát theo thời gian thực")
 
     station, lat, lon, horizon_hours, step_minutes = sidebar()
     minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
@@ -269,7 +269,7 @@ def main():
     m1, m2, m3 = st.columns(3)
     vis = len([r for r in rows if r["visible"]])
     m1.metric("✅ Đang quan sát được", f"{vis}/{len(rows)}")
-    m2.metric("📅 Mục tiêu planner", len(planner))
+    m2.metric("📅 Mục tiêu kế hoạch", len(planner))
     m3.metric("🧭 Tổng đối tượng", len(rows))
 
     f1, f2, f3 = st.columns([2, 2, 1])
