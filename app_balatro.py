@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import csv
 import io
-import json
 import tempfile
 
 import pandas as pd
@@ -22,32 +21,83 @@ LOCATION_PRESETS = {
 }
 
 OBJECT_CATEGORIES = {
-    "Mat Troi": "He Mat Troi", "Mat Trang": "He Mat Troi",
-    "Sao Thuy": "He Mat Troi", "Sao Kim": "He Mat Troi",
-    "Sao Hoa": "He Mat Troi", "Sao Moc": "He Mat Troi",
+    "Mat Troi": "He Mat Troi",
+    "Mat Trang": "He Mat Troi",
+    "Sao Thuy": "He Mat Troi",
+    "Sao Kim": "He Mat Troi",
+    "Sao Hoa": "He Mat Troi",
+    "Sao Moc": "He Mat Troi",
     "Sao Tho": "He Mat Troi",
-    "Polaris": "Sao sang", "Sirius": "Sao sang", "Vega": "Sao sang",
-    "Orion": "Chom sao", "Cassiopeia": "Chom sao",
+    "Polaris": "Sao sang",
+    "Sirius": "Sao sang",
+    "Vega": "Sao sang",
+    "Orion": "Chom sao",
+    "Cassiopeia": "Chom sao",
     "Andromeda": "Thien ha",
 }
 
-# ==================== FUN FACTS & DISPLAY ====================
-FUN_FACTS = { ... }  # giữ nguyên như cũ (đã có đầy đủ)
-DISPLAY_NAMES = { ... }  # giữ nguyên như cũ
+FUN_FACTS = {
+    "Mat Troi": "Anh sang Mat Troi den Trai Dat sau khoang 8 phut 20 giay.",
+    "Mat Trang": "Mat Trang dang roi xa Trai Dat khoang 3.8 cm moi nam.",
+    "Sao Thuy": "Sao Thuy co chu ky quay quanh Mat Troi chi 88 ngay, nhung nhiet do thay doi rat lon.",
+    "Sao Kim": "Sao Kim quay nguoc chieu so voi da so hanh tinh va co khi quyen day dac.",
+    "Sao Hoa": "Sao Hoa co Olympus Mons, nui lua lon nhat He Mat Troi.",
+    "Sao Moc": "Sao Moc la hanh tinh lon nhat He Mat Troi, co bao Lon Do ton tai rat lau.",
+    "Sao Tho": "Sao Tho noi tieng voi he vanh dai bang da va bui, rat de nhan ra khi quan sat bang kinh.",
+    "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
+    "Sirius": "Sirius la ngoi sao sang nhat tren bau troi dem khi quan sat tu Trai Dat.",
+    "Vega": "Vega tung dong vai tro sao Bac Cuc trong qua khu xa va se tro lai vai tro nay trong tuong lai.",
+    "Orion": "Orion de nhan ra nho 3 ngoi sao thang hang o phan dai.",
+    "Cassiopeia": "Cassiopeia co hinh chu W dac trung, de tim o bau troi ban cau Bac.",
+    "Andromeda": "Andromeda la thien ha lon gan Ngan Ha, co the thay mo nhat bang mat thuong trong troi toi.",
+}
+
+DISPLAY_NAMES = {
+    "Mat Troi": "☀️ Mặt Trời",
+    "Mat Trang": "🌕 Mặt Trăng",
+    "Sao Thuy": "🪐 Sao Thủy",
+    "Sao Kim": "🪐 Sao Kim",
+    "Sao Hoa": "🪐 Sao Hỏa",
+    "Sao Moc": "🪐 Sao Mộc",
+    "Sao Tho": "🪐 Sao Thổ",
+    "Polaris": "⭐ Polaris",
+    "Sirius": "⭐ Sirius",
+    "Vega": "⭐ Vega",
+    "Orion": "✨ Chòm Orion",
+    "Cassiopeia": "✨ Chòm Cassiopeia",
+    "Andromeda": "🌀 Thiên hà Andromeda",
+}
+
 
 def apply_theme():
-    st.markdown("""<style>
+    st.markdown(
+        """
+    <style>
     .stApp { background: radial-gradient(circle at 10% -10%, #1e293b 0%, #0f172a 45%, #020617 100%); color: #e5e7eb; }
-    .block-container { max-width: 1280px; padding-top: 1.8rem; }
-    h1, h2, h3 { color: #e0f2fe !important; letter-spacing: -0.4px; }
-    [data-testid="stMetric"] { background: rgba(15,23,42,0.8); border: 1px solid rgba(125,211,252,0.3); border-radius: 16px; padding: 16px 14px; }
-    .stButton > button { background: linear-gradient(90deg, #22d3ee, #38bdf8) !important; color: #082f49 !important; font-weight: 700; border-radius: 12px; }
-    .guide, .warn { border-radius: 14px; padding: 14px; margin: 12px 0; }
-    .guide { background: rgba(6,78,59,0.25); border: 1px solid rgba(16,185,129,0.5); }
-    .warn { background: rgba(127,29,29,0.25); border: 1px solid rgba(248,113,113,0.5); }
-    </style>""", unsafe_allow_html=True)
+    .block-container { max-width: 1200px; padding-top: 1.6rem; }
+    h1, h2, h3 { color: #e0f2fe !important; letter-spacing: -0.3px; }
+    [data-testid="stMetric"] {
+        background: rgba(15, 23, 42, 0.75);
+        border: 1px solid rgba(125, 211, 252, 0.28);
+        border-radius: 14px;
+        padding: 14px 12px;
+    }
+    .stButton > button {
+        background: linear-gradient(90deg, #22d3ee, #38bdf8) !important;
+        color: #082f49 !important;
+        font-weight: 700 !important;
+        border-radius: 10px !important;
+        border: none !important;
+    }
+    .stButton > button:hover { background: linear-gradient(90deg, #06b6d4, #0ea5e9) !important; color: #f8fafc !important; }
+    .guide { background: rgba(6, 78, 59, 0.25); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
+    .warn { background: rgba(127, 29, 29, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
 
-# ==================== SKYFIELD RESOURCES ====================
+
 @st.cache_resource(show_spinner=False)
 def get_resources():
     try:
@@ -62,6 +112,7 @@ def get_resources():
         ts = loader.timescale()
         return planets, planets["earth"], ts
 
+
 def build_db(planets):
     return {
         "Mat Troi": planets["sun"],
@@ -71,21 +122,22 @@ def build_db(planets):
         "Sao Hoa": planets["mars"],
         "Sao Moc": planets["jupiter barycenter"],
         "Sao Tho": planets["saturn barycenter"],
+        "Orion": Star(ra_hours=5.5, dec_degrees=0.0),
+        "Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
         "Polaris": Star(ra_hours=2.53, dec_degrees=89.26),
         "Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
         "Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
-        "Orion": Star(ra_hours=5.5, dec_degrees=0.0),
-        "Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
         "Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
     }
+
 
 def compute_alt_az(obj, observer, t):
     astrometric = observer.at(t).observe(obj)
     alt, az, distance = astrometric.apparent().altaz()
     return alt.degrees, az.degrees, distance
 
-# ==================== CACHE SNAPSHOT ====================
-@st.cache_data(ttl=60, show_spinner=False)
+
+@st.cache_data(ttl=90, show_spinner=False)
 def snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket):
     planets, earth, ts = get_resources()
     db = build_db(planets)
@@ -97,267 +149,156 @@ def snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket):
     for name, obj in db.items():
         alt, az, _ = compute_alt_az(obj, observer, t_now)
         visible = alt > 0
-        rows.append({
-            "Thien the": name, "Nhom": OBJECT_CATEGORIES.get(name, "Khac"),
-            "Altitude": round(alt, 1), "Azimuth": round(az, 1),
-            "Trang thai": "Có thể quan sát" if visible else "Dưới chân trời",
-            "visible": visible
-        })
-
-        # Timeline
+        rows.append({"Thien the": name, "Nhom": OBJECT_CATEGORIES.get(name, "Khac"), "Altitude": round(alt, 1), "Azimuth": round(az, 1), "Trang thai": "Co the quan sat" if visible else "Duoi chan troi", "visible": visible})
         tl = []
         for m in range(0, horizon_hours * 60 + 1, step_minutes):
             dt_utc = now_utc + timedelta(minutes=m)
             alt_m, az_m, _ = compute_alt_az(obj, observer, ts.from_datetime(dt_utc))
-            tl.append({
-                "time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"),
-                "alt": round(alt_m, 2),
-                "az": round(az_m, 2)
-            })
+            tl.append({"time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"), "alt": round(alt_m, 2), "az": round(az_m, 2)})
         timelines[name] = tl
-
         best = max(tl, key=lambda x: x["alt"])
         vis_pct = round(100 * len([x for x in tl if x["alt"] > 0]) / len(tl), 1)
         score = round(best["alt"] * 0.7 + vis_pct * 0.3, 2)
-        planner.append({
-            "Muc tieu": name, "Nhom": OBJECT_CATEGORIES.get(name, "Khac"),
-            "Diem uu tien": score,
-            "Do cao cuc dai": best["alt"],
-            "Ty le nhin thay (%)": vis_pct,
-            "Gio nen ngam": best["time"]
-        })
+        planner.append({"Muc tieu": name, "Nhom": OBJECT_CATEGORIES.get(name, "Khac"), "Diem uu tien": score, "Do cao cuc dai": best["alt"], "Ty le nhin thay (%)": vis_pct, "Gio nen ngam": best["time"]})
 
     planner = sorted(planner, key=lambda x: x["Diem uu tien"], reverse=True)[:8]
     return rows, timelines, planner
 
-# ==================== CHARTS ====================
+
 def make_chart(rows, only_visible):
     fig = go.Figure()
-    colors = {"He Mat Troi": "#22d3ee", "Sao sang": "#c026d3", "Chom sao": "#f472b6", "Thien ha": "#34d399"}
-
     for r in rows:
         if only_visible and not r["visible"]:
             continue
-        cat = OBJECT_CATEGORIES.get(r["Thien the"], "Khac")
-        color = colors.get(cat, "#64748b")
-        fig.add_trace(go.Scatter(
-            x=[r["Azimuth"]], y=[r["Altitude"]],
-            mode="markers+text",
-            text=[DISPLAY_NAMES.get(r["Thien the"], r["Thien the"])],
-            textposition="top center",
-            marker=dict(size=16 if r["visible"] else 11, color=color,
-                        line=dict(color="white", width=1.5)),
-            name=cat,
-            showlegend=True
-        ))
-
-    fig.update_layout(
-        height=480,
-        title="🌌 Bản đồ sao (Alt-Az)",
-        xaxis_title="Phương vị (Azimuth °)",
-        yaxis_title="Độ cao (Altitude °)",
-        xaxis=dict(
-            tickmode="array",
-            tickvals=[0, 45, 90, 135, 180, 225, 270, 315, 360],
-            ticktext=["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"],
-            range=[0, 360]
-        ),
-        yaxis=dict(range=[-8, 92]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-    fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb", opacity=0.6)
-    return fig
-
-def make_timeline_chart(timelines, target):
-    if target not in timelines:
-        return None
-    tl = timelines[target]
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=[x["time"] for x in tl],
-        y=[x["alt"] for x in tl],
-        mode="lines+markers",
-        line=dict(color="#22d3ee", width=3),
-        marker=dict(size=6),
-        name="Độ cao"
-    ))
-    fig.update_layout(
-        height=380,
-        title=f"📈 Độ cao {DISPLAY_NAMES.get(target, target)} trong {len(tl)*15//60} giờ tới",
-        xaxis_title="Thời gian (GMT+7)",
-        yaxis_title="Độ cao (°)",
-        yaxis=dict(range=[-10, 92]),
-        plot_bgcolor="rgba(15,23,42,0.6)"
-    )
+        fig.add_trace(go.Scatter(x=[r["Azimuth"]], y=[r["Altitude"]], mode="markers+text", text=[vn(r["Thien the"])], textposition="top center", marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"), showlegend=False))
     fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb")
+    fig.update_layout(height=460, title="Ban do sao", xaxis_title="Phuong vi (do)", yaxis_title="Do cao (do)")
     return fig
 
-# ==================== PROFILES ====================
-def load_profiles():
-    if Path(PROFILE_STORE).exists():
-        try:
-            with open(PROFILE_STORE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
 
-def save_profiles(profiles):
-    with open(PROFILE_STORE, "w", encoding="utf-8") as f:
-        json.dump(profiles, f, ensure_ascii=False, indent=2)
-
-# ==================== SIDEBAR ====================
-def sidebar():
-    with st.sidebar:
-        st.header("⚙️ Cấu hình quan sát")
-
-        # === PROFILES ===
-        st.subheader("📋 Hồ sơ quan sát")
-        if "profiles" not in st.session_state:
-            st.session_state.profiles = load_profiles()
-
-        profile_list = list(st.session_state.profiles.keys())
-        if profile_list:
-            selected_profile = st.selectbox("Tải hồ sơ", ["-- Chọn --"] + profile_list, key="load_profile")
-            if selected_profile != "-- Chọn --" and st.button("✅ Áp dụng hồ sơ"):
-                lat_val, lon_val = st.session_state.profiles[selected_profile]
-                st.session_state.current_lat = lat_val
-                st.session_state.current_lon = lon_val
-                st.success(f"Đã áp dụng **{selected_profile}**")
-                st.rerun()
-
-        # === LOCATION ===
-        preset = st.selectbox("📍 Chọn địa điểm", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset")
-        if preset != "Tùy chỉnh":
-            station = preset
-            d_lat, d_lon = LOCATION_PRESETS[preset]
-        else:
-            station = "Trạm tùy chỉnh"
-            d_lat, d_lon = DEFAULT_LAT, DEFAULT_LON
-
-        # Sử dụng session_state để giữ giá trị khi áp dụng profile
-        lat = st.number_input("Vĩ độ", -90.0, 90.0, st.session_state.get("current_lat", d_lat), 0.001, format="%.4f", key="lat_input")
-        lon = st.number_input("Kinh độ", -180.0, 180.0, st.session_state.get("current_lon", d_lon), 0.001, format="%.4f", key="lon_input")
-
-        h = st.slider("Khung dự báo (giờ)", 3, 24, 12, 1)
-        step = st.slider("Bước tính (phút)", 5, 60, 15, 5)
-
-        st.divider()
-        new_name = st.text_input("Tên hồ sơ mới", value=station, key="new_profile_name")
-        if st.button("💾 Lưu vị trí hiện tại"):
-            if new_name:
-                st.session_state.profiles[new_name] = (lat, lon)
-                save_profiles(st.session_state.profiles)
-                st.success(f"✅ Đã lưu hồ sơ **{new_name}**")
-                st.rerun()
-
-        return station, lat, lon, h, step
-
-# ==================== MAIN ====================
-def main():
-    st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🔭", layout="wide")
-    apply_theme()
-    st.title("🔭 Kính Thiên Văn STEM")
-    st.caption("🌌 Quan sát thời gian thực • Dễ dùng cho lớp học STEM • Đã nâng cấp 2026")
-
-    station, lat, lon, horizon_hours, step_minutes = sidebar()
-
-    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
-
-    planets, earth, ts = get_resources()
-    db = build_db(planets)
-    observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
-
-    rows, timelines, planner = snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket)
-
-    st.write(f"📍 **Trạm:** {station} | **Tọa độ:** {lat:.4f}, {lon:.4f} | 🕒 **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}**")
-
-    col1, col2, col3, col4 = st.columns([1.5, 1.5, 1.5, 1])
-    vis = len([r for r in rows if r["visible"]])
-    col1.metric("✅ Đang quan sát được", f"{vis}/{len(rows)}")
-    col2.metric("📅 Planner", len(planner))
-    col3.metric("🧭 Tổng đối tượng", len(rows))
-    if col4.button("🔄 Làm mới dữ liệu", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-    # Filters
-    f1, f2, f3 = st.columns([2, 2, 1])
-    group = f1.selectbox("🔎 Lọc nhóm", ["Tất cả", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="group")
-    search = f2.text_input("🔍 Tìm thiên thể", "", key="search")
-    only_visible = f3.toggle("Chỉ hiện đang thấy", False, key="only_visible")
-
-    names = [n for n in db.keys() if (group == "Tất cả" or OBJECT_CATEGORIES.get(n, "") == group) and (search.strip().lower() in n.lower())]
-    target = st.selectbox("🪐 Chọn thiên thể", names or list(db.keys()), key="target", format_func=lambda x: DISPLAY_NAMES.get(x, x))
-
-    if st.button("📍 Dò tìm & quan sát", type="primary", use_container_width=True):
-        alt, az, dist = compute_alt_az(db[target], observer, ts.now())
-        dist_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoảng cách rất lớn"
-        st.session_state.scan = {"target": target, "alt": alt, "az": az, "dist": dist_text}
-
-    # === KẾT QUẢ QUAN SÁT ===
-    if "scan" in st.session_state:
-        r = st.session_state.scan
-        k1, k2 = st.columns(2)
-        k1.metric("🌍 Độ cao", f"{r['alt']:.1f}°")
-        k2.metric("🧭 Phương vị", f"{r['az']:.1f}°")
-        st.info(f"📏 Khoảng cách: **{r['dist']}**")
-
-        if timelines.get(r["target"]):
-            best = max(timelines[r["target"]], key=lambda x: x["alt"])
-            st.info(f"⏰ Giờ đề xuất: **{best['time']}** (độ cao cực đại **{best['alt']:.1f}°**)")
-
-        st.plotly_chart(make_timeline_chart(timelines, r["target"]), use_container_width=True)
-
-        # Hướng dẫn
-        if r["alt"] > 0:
-            st.markdown(f"""
-            <div class='guide'>
-            <b>🎯 Hướng dẫn chỉnh kính:</b><br>
-            1) Xoay chân đế hướng <b>{r['az']:.0f}°</b> (Bắc = 0°)<br>
-            2) Nâng ống kính lên <b>{r['alt']:.0f}°</b><br>
-            3) Căn tâm bằng kính ngắm → chỉnh nét focus
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời. Hãy đợi thêm!</div>", unsafe_allow_html=True)
-
-        st.write(f"**🌟 Fun fact:** {FUN_FACTS.get(r['target'], 'Hãy tiếp tục khám phá vũ trụ!')}")
-
-    # === TABS ===
-    tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan"])
-
-    with tab1:
-        st.plotly_chart(make_chart(rows, only_visible), use_container_width=True)
-
-    with tab2:
-        planner_df = pd.DataFrame(planner)
-        st.dataframe(planner_df, use_container_width=True, hide_index=True)
-        st.download_button("⬇️ Tải Planner CSV", data=to_csv_bytes(planner), file_name="planner.csv", mime="text/csv")
-        st.download_button("⬇️ Tải Planner Excel", data=to_excel_bytes(planner_df), file_name="planner.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    with tab3:
-        summary_rows = [{k: v for k, v in r.items() if k != "visible"} for r in rows]
-        summary_df = pd.DataFrame(summary_rows)
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-        st.download_button("⬇️ Tải Tổng quan CSV", data=to_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
-        st.download_button("⬇️ Tải Tổng quan Excel", data=to_excel_bytes(summary_df), file_name="summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-# Helper functions (giữ nguyên)
-def to_csv_bytes(rows): 
-    if not rows: return b""
+def to_csv_bytes(rows):
+    if not rows:
+        return b""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
     writer.writeheader()
     writer.writerows(rows)
     return buf.getvalue().encode("utf-8")
 
+
 def to_excel_bytes(df):
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="data")
     return out.getvalue()
+
+
+def render_guidance(target, alt, az):
+    st.markdown("### 🎯 Hướng dẫn chỉnh kính sau khi dò tìm")
+    if alt > 0:
+        text = (
+            f"1) Xoay chân đế hướng **{az:.0f}°** (Bắc = 0°).  \n"
+            f"2) Nâng ống kính lên **{alt:.0f}°**.  \n"
+            "3) Căn tâm bằng kính ngắm, sau đó chỉnh nét bằng vòng focus."
+        )
+        st.markdown(f"<div class='guide'>{text}</div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời, hãy đợi thêm và thử lại.</div>", unsafe_allow_html=True)
+
+
+def vn(name):
+    return DISPLAY_NAMES.get(name, name)
+
+
+def sidebar():
+    with st.sidebar:
+        st.header("⚙️ Cấu hình quan sát")
+        preset = st.selectbox("📍 Chọn địa điểm quan sát", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset")
+        if preset != "Tùy chỉnh":
+            station = preset
+            d_lat, d_lon = LOCATION_PRESETS[preset]
+        else:
+            station = st.text_input("Tên trạm", "Trạm tùy chỉnh")
+            d_lat, d_lon = DEFAULT_LAT, DEFAULT_LON
+        lat = st.number_input("Vĩ độ", -90.0, 90.0, d_lat, 0.001, format="%.4f")
+        lon = st.number_input("Kinh độ", -180.0, 180.0, d_lon, 0.001, format="%.4f")
+        h = st.slider("Khung dự báo (giờ)", 3, 24, 12, 1)
+        step = st.slider("Bước tính (phút)", 5, 60, 15, 5)
+    return station, lat, lon, h, step
+
+
+def main():
+    st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🔭", layout="wide")
+    apply_theme()
+    st.title("🔭 Kính Thiên Văn STEM")
+    st.caption("🌌 Giao diện rõ ràng • Dễ dùng trong lớp học STEM • Quan sát theo thời gian thực")
+
+    station, lat, lon, horizon_hours, step_minutes = sidebar()
+    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
+    try:
+        planets, earth, ts = get_resources()
+        db = build_db(planets)
+        observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
+        rows, timelines, planner = snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket)
+    except Exception as exc:
+        st.error("❌ Không tải được dữ liệu thiên văn.")
+        st.code(str(exc))
+        st.stop()
+
+    st.write(f"📍 **Trạm:** {station} | **Tọa độ:** {lat:.4f}, {lon:.4f} | 🕒 **Giờ:** {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
+
+    m1, m2, m3 = st.columns(3)
+    vis = len([r for r in rows if r["visible"]])
+    m1.metric("✅ Đang quan sát được", f"{vis}/{len(rows)}")
+    m2.metric("📅 Mục tiêu planner", len(planner))
+    m3.metric("🧭 Tổng đối tượng", len(rows))
+
+    f1, f2, f3 = st.columns([2, 2, 1])
+    group = f1.selectbox("🔎 Lọc nhóm", ["Tất cả", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="group")
+    search = f2.text_input("Tìm thiên thể", "", key="search")
+    only_visible = f3.toggle("Chỉ hiện đang thấy", False, key="only_visible")
+    names = [n for n in db.keys() if (group == "Tất cả" or OBJECT_CATEGORIES.get(n, "") == group) and (search.strip().lower() in n.lower())]
+    if not names:
+        names = list(db.keys())
+    target = st.selectbox("🪐 Chọn thiên thể", names, key="target", format_func=vn)
+
+    if st.button("📍 Dò tìm & quan sát", use_container_width=True):
+        alt, az, dist = compute_alt_az(db[target], observer, ts.now())
+        dist_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoang cach lon"
+        st.session_state.scan = {"target": target, "alt": alt, "az": az, "dist": dist_text}
+
+    if "scan" in st.session_state:
+        r = st.session_state.scan
+        k1, k2 = st.columns(2)
+        k1.metric("Độ cao", f"{r['alt']:.1f}°")
+        k2.metric("Phương vị", f"{r['az']:.1f}°")
+        st.info(f"📏 Khoảng cách ước tính: {r['dist']}")
+        if timelines.get(r["target"]):
+            best = max(timelines[r["target"]], key=lambda x: x["alt"])
+            st.info(f"⏱️ Giờ đề xuất: {best['time']} (GMT+7), độ cao cực đại {best['alt']:.1f}°")
+        render_guidance(vn(r["target"]), r["alt"], r["az"])
+        st.write(f"**🌟 Fun fact:** {FUN_FACTS.get(r['target'], 'Hãy tiếp tục khám phá vũ trụ!')}")
+
+    # Dam bao bo du lieu fun fact luon day du cho cac thien the dang su dung.
+    missing_facts = [name for name in db.keys() if name not in FUN_FACTS]
+    if missing_facts:
+        st.warning("Thiếu Fun Fact cho: " + ", ".join(missing_facts))
+
+    tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan"])
+    with tab1:
+        st.plotly_chart(make_chart(rows, only_visible), use_container_width=True)
+    with tab2:
+        planner_df = pd.DataFrame(planner)
+        st.dataframe(planner_df, use_container_width=True, hide_index=True)
+        st.download_button("⬇️ Tải planner CSV", data=to_csv_bytes(planner), file_name="planner.csv", mime="text/csv")
+        st.download_button("⬇️ Tải planner Excel", data=to_excel_bytes(planner_df), file_name="planner.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    with tab3:
+        summary_rows = [{k: v for k, v in r.items() if k != "visible"} for r in rows]
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        st.download_button("⬇️ Tải tổng quan CSV", data=to_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
+        st.download_button("⬇️ Tải tổng quan Excel", data=to_excel_bytes(summary_df), file_name="summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 
 if __name__ == "__main__":
     main()
