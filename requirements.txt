@@ -2,3 +2,7 @@ streamlit
 skyfield
 numpy
 plotly
+pandas
+astropy
+astroplan
+openpyx1
