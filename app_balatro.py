@@ -3,9 +3,20 @@ import csv
 import io
 import time
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from skyfield.api import Star, Topos, load
+
+try:
+    from astroplan import FixedTarget, Observer
+    from astropy import units as u
+    from astropy.coordinates import EarthLocation, SkyCoord
+    from astropy.time import Time as AstroTime
+
+    ASTROPLAN_AVAILABLE = True
+except Exception:
+    ASTROPLAN_AVAILABLE = False
 
 # ====================== CẤU HÌNH VỊ TRÍ QUAN SÁT ======================
 DEFAULT_LAT = 10.9500
@@ -52,6 +63,20 @@ LOCATION_PRESETS = {
     "Đà Nẵng": (16.0544, 108.2022),
     "Cần Thơ": (10.0452, 105.7469),
     "Nha Trang": (12.2388, 109.1967),
+}
+FIXED_TARGET_COORDS = {
+    "✨ Chòm Gấu Lớn (Ursa Major)": (11.0, 50.0),
+    "✨ Chòm Thợ Săn (Orion)": (5.5, 0.0),
+    "✨ Chòm Bọ Cạp (Scorpius)": (16.8, -30.0),
+    "✨ Chòm Cassiopeia": (1.0, 62.0),
+    "✨ Chòm Sư Tử (Leo)": (10.5, 15.0),
+    "✨ Chòm Thiên Nga (Cygnus)": (20.7, 40.0),
+    "⭐️ Sao Bắc Cực (Polaris)": (2.53, 89.26),
+    "⭐️ Sao Sirius": (6.7525, -16.7161),
+    "⭐️ Sao Betelgeuse": (5.9195, 7.4073),
+    "⭐️ Sao Vega": (18.6167, 38.7833),
+    "🌀 Thiên hà Andromeda (M31)": (0.7, 41.2),
+    "🌀 Tâm Ngân Hà (Milky Way Center)": (17.75, -29.0),
 }
 
 
@@ -200,6 +225,44 @@ def create_csv_bytes(rows):
     writer.writeheader()
     writer.writerows(rows)
     return buffer.getvalue().encode("utf-8")
+
+
+def create_excel_bytes(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="planner")
+    return output.getvalue()
+
+
+def get_rise_set_info(target_name, latitude, longitude):
+    if not ASTROPLAN_AVAILABLE:
+        return "Chưa bật", "Cài thêm astropy + astroplan để xem giờ mọc/lặn."
+
+    try:
+        location = EarthLocation.from_geodetic(longitude * u.deg, latitude * u.deg)
+        observer = Observer(location=location, timezone="Asia/Ho_Chi_Minh")
+        now = AstroTime.now()
+
+        if target_name == "☀️ MẶT TRỜI":
+            rise_time = observer.sun_rise_time(now, which="next")
+            set_time = observer.sun_set_time(now, which="next")
+        elif target_name == "🌕 MẶT TRĂNG":
+            rise_time = observer.moon_rise_time(now, which="next")
+            set_time = observer.moon_set_time(now, which="next")
+        elif target_name in FIXED_TARGET_COORDS:
+            ra_hours, dec_deg = FIXED_TARGET_COORDS[target_name]
+            coord = SkyCoord(ra=ra_hours * u.hourangle, dec=dec_deg * u.deg, frame="icrs")
+            fixed_target = FixedTarget(name=target_name, coord=coord)
+            rise_time = observer.target_rise_time(now, fixed_target, which="next")
+            set_time = observer.target_set_time(now, fixed_target, which="next")
+        else:
+            return "Giới hạn", "Hiện mới hỗ trợ mọc/lặn cho Mặt Trời, Mặt Trăng, sao/chòm sao/thiên hà cố định."
+
+        rise_local = rise_time.to_datetime(timezone=LOCAL_TZ).strftime("%H:%M")
+        set_local = set_time.to_datetime(timezone=LOCAL_TZ).strftime("%H:%M")
+        return "Sẵn sàng", f"Mọc: {rise_local} • Lặn: {set_local} (GMT+7)"
+    except Exception:
+        return "Không khả dụng", "Không tính được giờ mọc/lặn cho mục tiêu này tại vị trí hiện tại."
 
 
 def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
@@ -466,6 +529,11 @@ if st.session_state.last_result:
         f"⏱️ Thời điểm đề xuất trong {horizon_hours} giờ tới: **{best_time_local.strftime('%H:%M')} (GMT+7)** "
         f"với độ cao cực đại khoảng **{best_alt:.1f}°**."
     )
+    rs_status, rs_message = get_rise_set_info(lua_chon, latitude, longitude)
+    if rs_status == "Sẵn sàng":
+        st.caption(f"🌅 Giờ mọc/lặn tham khảo: {rs_message}")
+    else:
+        st.caption(f"🌅 Mọc/lặn ({rs_status}): {rs_message}")
 
     ten_ngan = lua_chon.split(" ", 1)[1].split(" (")[0] if "(" in lua_chon else lua_chon.split(" ", 1)[1]
     if alt > 0:
@@ -550,12 +618,20 @@ with tabs[1]:
             }
         )
     planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
-    st.dataframe(planner_rows, use_container_width=True, hide_index=True)
+    planner_df = pd.DataFrame(planner_rows)
+    st.dataframe(planner_df, use_container_width=True, hide_index=True)
     st.download_button(
         label="⬇️ Tải kế hoạch Tonight Planner (CSV)",
         data=create_csv_bytes(planner_rows),
         file_name=f"tonight_planner_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv",
+        use_container_width=True,
+    )
+    st.download_button(
+        label="⬇️ Tải kế hoạch Tonight Planner (Excel)",
+        data=create_excel_bytes(planner_df),
+        file_name=f"tonight_planner_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
 
@@ -570,12 +646,19 @@ with tabs[2]:
             st.metric("Thiên thể đang quan sát được", f"{visible_count}/{len(summary_rows)}")
         with col_b:
             st.metric("Mục tiêu đang lọc", len(filtered_names))
-        st.dataframe(summary_rows, use_container_width=True, hide_index=True)
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
         st.download_button(
             label="⬇️ Tải bảng tổng quan (CSV)",
             data=create_csv_bytes(summary_rows),
             file_name=f"tong_quan_bau_troi_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv",
+        )
+        st.download_button(
+            label="⬇️ Tải bảng tổng quan (Excel)",
+            data=create_excel_bytes(summary_df),
+            file_name=f"tong_quan_bau_troi_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         st.markdown("**Top 5 mục tiêu nên ưu tiên lúc này:**")
         for idx, row in enumerate(top_targets, start=1):
