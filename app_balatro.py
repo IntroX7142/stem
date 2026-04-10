@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta, timezone
+import csv
+import io
 import time
 
 import plotly.graph_objects as go
@@ -42,6 +44,14 @@ OBJECT_CATEGORIES = {
     "⭐️ Sao Vega": "Sao sáng",
     "🌀 Thiên hà Andromeda (M31)": "Thiên hà",
     "🌀 Tâm Ngân Hà (Milky Way Center)": "Thiên hà",
+}
+LOCATION_PRESETS = {
+    "THCS Minh Đức (Đồng Nai)": (10.9500, 107.0100),
+    "TP.HCM": (10.7769, 106.7009),
+    "Hà Nội": (21.0285, 105.8542),
+    "Đà Nẵng": (16.0544, 108.2022),
+    "Cần Thơ": (10.0452, 105.7469),
+    "Nha Trang": (12.2388, 109.1967),
 }
 
 
@@ -169,6 +179,27 @@ def next_visibility_window(obj, observer, ts, horizon_hours=12, step_minutes=10)
             first_hidden = dt_utc
             break
     return first_visible, first_hidden
+
+
+def score_target_for_tonight(name, db_thien_the, observer, ts, horizon_hours=12, step_minutes=15):
+    obj = db_thien_the[name]
+    timeline = build_timeline_for_object(obj, observer, ts, horizon_hours=horizon_hours, step_minutes=step_minutes)
+    max_alt = max(point["alt"] for point in timeline)
+    visible_points = sum(1 for point in timeline if point["alt"] > 0)
+    visibility_ratio = visible_points / max(len(timeline), 1)
+    # Score đơn giản để ưu tiên mục tiêu cao và quan sát được lâu.
+    score = max_alt * 0.7 + visibility_ratio * 100 * 0.3
+    return round(score, 2), round(max_alt, 1), round(visibility_ratio * 100, 1)
+
+
+def create_csv_bytes(rows):
+    buffer = io.StringIO()
+    if not rows:
+        return "".encode("utf-8")
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
 
 
 def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
@@ -350,9 +381,15 @@ except Exception:
 db_thien_the = build_celestial_db(planets)
 with st.sidebar:
     st.header("⚙️ Cấu hình quan sát")
-    station_name = st.text_input("Tên trạm", value="THCS Minh Đức")
-    latitude = st.number_input("Vĩ độ", min_value=-90.0, max_value=90.0, value=DEFAULT_LAT, step=0.001, format="%.4f")
-    longitude = st.number_input("Kinh độ", min_value=-180.0, max_value=180.0, value=DEFAULT_LON, step=0.001, format="%.4f")
+    selected_preset = st.selectbox("Preset địa điểm", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"])
+    if selected_preset == "Tùy chỉnh":
+        station_name = st.text_input("Tên trạm", value="Trạm tùy chỉnh")
+        default_lat, default_lon = DEFAULT_LAT, DEFAULT_LON
+    else:
+        station_name = selected_preset
+        default_lat, default_lon = LOCATION_PRESETS[selected_preset]
+    latitude = st.number_input("Vĩ độ", min_value=-90.0, max_value=90.0, value=default_lat, step=0.001, format="%.4f")
+    longitude = st.number_input("Kinh độ", min_value=-180.0, max_value=180.0, value=default_lon, step=0.001, format="%.4f")
     horizon_hours = st.slider("Khung dự báo (giờ)", min_value=3, max_value=24, value=12, step=1)
     plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
 
@@ -492,6 +529,36 @@ with tabs[1]:
     else:
         st.info("Hãy chọn ít nhất 1 thiên thể để xem biểu đồ lập kế hoạch.")
 
+    st.markdown("### Tonight Planner")
+    planner_candidates = [name for name in db_thien_the if OBJECT_CATEGORIES.get(name) != "Thiên hà"]
+    planner_rows = []
+    for name in planner_candidates:
+        score, max_alt, vis_pct = score_target_for_tonight(
+            name, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
+        )
+        best_time_local, _ = best_observation_time(
+            name, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
+        )
+        planner_rows.append(
+            {
+                "Mục tiêu": name,
+                "Nhóm": OBJECT_CATEGORIES.get(name, "Khác"),
+                "Điểm ưu tiên": score,
+                "Độ cao cực đại (°)": max_alt,
+                "Tỷ lệ nhìn thấy (%)": vis_pct,
+                "Giờ nên ngắm (GMT+7)": best_time_local.strftime("%H:%M"),
+            }
+        )
+    planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
+    st.dataframe(planner_rows, use_container_width=True, hide_index=True)
+    st.download_button(
+        label="⬇️ Tải kế hoạch Tonight Planner (CSV)",
+        data=create_csv_bytes(planner_rows),
+        file_name=f"tonight_planner_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
 with tabs[2]:
     st.subheader("Bảng tóm tắt quan sát nhanh")
     _, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False)
@@ -504,6 +571,12 @@ with tabs[2]:
         with col_b:
             st.metric("Mục tiêu đang lọc", len(filtered_names))
         st.dataframe(summary_rows, use_container_width=True, hide_index=True)
+        st.download_button(
+            label="⬇️ Tải bảng tổng quan (CSV)",
+            data=create_csv_bytes(summary_rows),
+            file_name=f"tong_quan_bau_troi_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+        )
         st.markdown("**Top 5 mục tiêu nên ưu tiên lúc này:**")
         for idx, row in enumerate(top_targets, start=1):
             st.write(f"{idx}. {row['Thiên thể']} — Alt {row['Altitude (°)']}° ({row['Trạng thái']})")
