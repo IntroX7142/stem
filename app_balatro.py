@@ -1,304 +1,192 @@
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-import csv
-import io
-import tempfile
-
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
-from skyfield.api import Loader, Star, Topos, load
+from skyfield.api import load, Topos, Star
+import plotly.graph_objects as go
+import math
 
-LOCAL_TZ = timezone(timedelta(hours=7))
-DEFAULT_LAT = 10.95
-DEFAULT_LON = 107.01
-PROFILE_STORE = "observer_profiles.json"
+# ==========================================
+# 1. CẤU HÌNH CƠ BẢN & GIAO DIỆN STREAMLIT
+# ==========================================
+st.set_page_config(page_title="Radar Thiên Văn 9.1", page_icon="🔭", layout="centered")
 
-LOCATION_PRESETS = {
-    "THCS Minh Đức (Đồng Nai)": (10.95, 107.01),
-    "TP.HCM": (10.7769, 106.7009),
-    "Hà Nội": (21.0285, 105.8542),
+# ==========================================
+# 2. DỮ LIỆU THIÊN VĂN (BACKEND)
+# ==========================================
+@st.cache_resource
+def load_astronomy_data():
+    """Tải dữ liệu NASA một lần duy nhất để ứng dụng chạy nhanh hơn"""
+    planets = load('de421.bsp')
+    return planets
+
+planets = load_astronomy_data()
+earth = planets['earth']
+THCS_MINH_DUC = Topos('10.9500 N', '107.0100 E')
+
+# Từ điển thiên thể (Đã chuẩn hóa Tiếng Việt có dấu)
+db_thien_the = {
+    "☀️ Mặt Trời": planets['sun'],
+    "🌕 Mặt Trăng": planets['moon'],
+    "🪐 Sao Thủy": planets['mercury'],
+    "🪐 Sao Kim": planets['venus'],
+    "🪐 Sao Hỏa": planets['mars'],
+    "🪐 Sao Mộc": planets['jupiter barycenter'],
+    "🪐 Sao Thổ": planets['saturn barycenter'],
+    "✨ Chòm Thợ Săn (Orion)": Star(ra_hours=5.5, dec_degrees=0.0),
+    "🌀 Thiên hà Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
 }
 
-OBJECT_CATEGORIES = {
-    "Mat Troi": "He Mat Troi",
-    "Mat Trang": "He Mat Troi",
-    "Sao Thuy": "He Mat Troi",
-    "Sao Kim": "He Mat Troi",
-    "Sao Hoa": "He Mat Troi",
-    "Sao Moc": "He Mat Troi",
-    "Sao Tho": "He Mat Troi",
-    "Polaris": "Sao sang",
-    "Sirius": "Sao sang",
-    "Vega": "Sao sang",
-    "Orion": "Chom sao",
-    "Cassiopeia": "Chom sao",
-    "Andromeda": "Thien ha",
-}
-
-FUN_FACTS = {
-    "Mat Troi": "Anh sang Mat Troi den Trai Dat sau khoang 8 phut 20 giay.",
-    "Mat Trang": "Mat Trang dang roi xa Trai Dat khoang 3.8 cm moi nam.",
-    "Sao Thuy": "Sao Thuy co chu ky quay quanh Mat Troi chi 88 ngay, nhung nhiet do thay doi rat lon.",
-    "Sao Kim": "Sao Kim quay nguoc chieu so voi da so hanh tinh va co khi quyen day dac.",
-    "Sao Hoa": "Sao Hoa co Olympus Mons, nui lua lon nhat He Mat Troi.",
-    "Sao Moc": "Sao Moc la hanh tinh lon nhat He Mat Troi, co bao Lon Do ton tai rat lau.",
-    "Sao Tho": "Sao Tho noi tieng voi he vanh dai bang da va bui, rat de nhan ra khi quan sat bang kinh.",
-    "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
-    "Sirius": "Sirius la ngoi sao sang nhat tren bau troi dem khi quan sat tu Trai Dat.",
-    "Vega": "Vega tung dong vai tro sao Bac Cuc trong qua khu xa va se tro lai vai tro nay trong tuong lai.",
-    "Orion": "Orion de nhan ra nho 3 ngoi sao thang hang o phan dai.",
-    "Cassiopeia": "Cassiopeia co hinh chu W dac trung, de tim o bau troi ban cau Bac.",
-    "Andromeda": "Andromeda la thien ha lon gan Ngan Ha, co the thay mo nhat bang mat thuong trong troi toi.",
-}
-
-DISPLAY_NAMES = {
-    "Mat Troi": "☀️ Mặt Trời",
-    "Mat Trang": "🌕 Mặt Trăng",
-    "Sao Thuy": "🪐 Sao Thủy",
-    "Sao Kim": "🪐 Sao Kim",
-    "Sao Hoa": "🪐 Sao Hỏa",
-    "Sao Moc": "🪐 Sao Mộc",
-    "Sao Tho": "🪐 Sao Thổ",
-    "Polaris": "⭐ Polaris",
-    "Sirius": "⭐ Sirius",
-    "Vega": "⭐ Vega",
-    "Orion": "✨ Chòm Orion",
-    "Cassiopeia": "✨ Chòm Cassiopeia",
-    "Andromeda": "🌀 Thiên hà Andromeda",
-}
-
-
-def apply_theme():
-    st.markdown(
-        """
-    <style>
-    .stApp { background: radial-gradient(circle at 10% -10%, #1e293b 0%, #0f172a 45%, #020617 100%); color: #e5e7eb; }
-    .block-container { max-width: 1200px; padding-top: 1.6rem; }
-    h1, h2, h3 { color: #e0f2fe !important; letter-spacing: -0.3px; }
-    [data-testid="stMetric"] {
-        background: rgba(15, 23, 42, 0.75);
-        border: 1px solid rgba(125, 211, 252, 0.28);
-        border-radius: 14px;
-        padding: 14px 12px;
-    }
-    .stButton > button {
-        background: linear-gradient(90deg, #22d3ee, #38bdf8) !important;
-        color: #082f49 !important;
-        font-weight: 700 !important;
-        border-radius: 10px !important;
-        border: none !important;
-    }
-    .stButton > button:hover { background: linear-gradient(90deg, #06b6d4, #0ea5e9) !important; color: #f8fafc !important; }
-    .guide { background: rgba(6, 78, 59, 0.25); border: 1px solid rgba(16, 185, 129, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
-    .warn { background: rgba(127, 29, 29, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 12px; padding: 12px; margin: 10px 0; }
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
-
-
-@st.cache_resource(show_spinner=False)
-def get_resources():
-    try:
-        planets = load("de421.bsp")
-        ts = load.timescale()
-        return planets, planets["earth"], ts
-    except Exception:
-        cache_dir = Path(tempfile.gettempdir()) / "skyfield_cache"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        loader = Loader(str(cache_dir))
-        planets = loader("de421.bsp")
-        ts = loader.timescale()
-        return planets, planets["earth"], ts
-
-
-def build_db(planets):
-    return {
-        "Mat Troi": planets["sun"],
-        "Mat Trang": planets["moon"],
-        "Sao Thuy": planets["mercury"],
-        "Sao Kim": planets["venus"],
-        "Sao Hoa": planets["mars"],
-        "Sao Moc": planets["jupiter barycenter"],
-        "Sao Tho": planets["saturn barycenter"],
-        "Orion": Star(ra_hours=5.5, dec_degrees=0.0),
-        "Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
-        "Polaris": Star(ra_hours=2.53, dec_degrees=89.26),
-        "Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
-        "Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
-        "Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
-    }
-
-
-def compute_alt_az(obj, observer, t):
-    astrometric = observer.at(t).observe(obj)
+def tinh_toan_vi_tri(thien_the_chon):
+    ts = load.timescale()
+    t = ts.now() 
+    nguoi_quan_sat = earth + THCS_MINH_DUC
+    doi_tuong = db_thien_the[thien_the_chon]
+    
+    astrometric = nguoi_quan_sat.at(t).observe(doi_tuong)
     alt, az, distance = astrometric.apparent().altaz()
-    return alt.degrees, az.degrees, distance
+    
+    dist_str = f"{distance.km:,.0f} km" if hasattr(distance, 'km') else "Ngoài Hệ Mặt Trời"
+    return alt.degrees, az.degrees, dist_str
 
+# ==========================================
+# 3. CSS TÙY CHỈNH (STYLE BALATRO GỌN GÀNG)
+# ==========================================
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
-@st.cache_data(ttl=90, show_spinner=False)
-def snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket):
-    planets, earth, ts = get_resources()
-    db = build_db(planets)
-    observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
-    now_utc = datetime.now(timezone.utc)
-    t_now = ts.now()
+    /* Nền vũ trụ chuyển màu nhẹ nhàng */
+    .stApp {
+        background: linear-gradient(135deg, #1a0b2e 0%, #4b1d52 50%, #1a0b2e 100%);
+        background-size: 200% 200%;
+        animation: gradient-swirl 10s ease infinite;
+        font-family: 'VT323', monospace;
+        color: #f1faee;
+    }
+    @keyframes gradient-swirl {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
 
-    rows, timelines, planner = [], {}, []
-    for name, obj in db.items():
-        alt, az, _ = compute_alt_az(obj, observer, t_now)
-        visible = alt > 0
-        rows.append({"Thien the": name, "Nhom": OBJECT_CATEGORIES.get(name, "Khac"), "Altitude": round(alt, 1), "Azimuth": round(az, 1), "Trang thai": "Co the quan sat" if visible else "Duoi chan troi", "visible": visible})
-        tl = []
-        for m in range(0, horizon_hours * 60 + 1, step_minutes):
-            dt_utc = now_utc + timedelta(minutes=m)
-            alt_m, az_m, _ = compute_alt_az(obj, observer, ts.from_datetime(dt_utc))
-            tl.append({"time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"), "alt": round(alt_m, 2), "az": round(az_m, 2)})
-        timelines[name] = tl
-        best = max(tl, key=lambda x: x["alt"])
-        vis_pct = round(100 * len([x for x in tl if x["alt"] > 0]) / len(tl), 1)
-        score = round(best["alt"] * 0.7 + vis_pct * 0.3, 2)
-        planner.append({"Muc tieu": name, "Nhom": OBJECT_CATEGORIES.get(name, "Khac"), "Diem uu tien": score, "Do cao cuc dai": best["alt"], "Ty le nhin thay (%)": vis_pct, "Gio nen ngam": best["time"]})
+    /* Ép tất cả chữ dùng font Pixel */
+    * { font-family: 'VT323', monospace !important; }
 
-    planner = sorted(planner, key=lambda x: x["Diem uu tien"], reverse=True)[:8]
-    return rows, timelines, planner
+    /* Tiêu đề chính */
+    h1 {
+        color: #fee440;
+        text-shadow: 4px 4px 0px #c1121f;
+        text-align: center;
+        font-size: 3.5rem !important;
+        margin-bottom: 0px !important;
+    }
 
+    /* Khối thẻ bài (Metrics) */
+    div[data-testid="stMetric"] {
+        background-color: rgba(20, 10, 40, 0.85);
+        border: 3px solid #fee440;
+        border-radius: 12px;
+        padding: 15px;
+        box-shadow: 4px 4px 0px #c1121f;
+        text-align: center;
+    }
+    div[data-testid="stMetricValue"] {
+        font-size: 2.8rem !important;
+        color: #ffffff !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 1.5rem !important;
+        color: #fee440 !important;
+    }
 
-def make_chart(rows, only_visible):
+    /* Nút bấm */
+    .stButton>button {
+        background-color: #c1121f;
+        color: white;
+        font-size: 1.8rem !important;
+        border: 3px solid #fee440;
+        border-radius: 8px;
+        width: 100%;
+        box-shadow: 4px 4px 0px #000;
+        transition: 0.1s;
+    }
+    .stButton>button:active {
+        box-shadow: 0px 0px 0px #000;
+        transform: translateY(4px);
+    }
+    
+    /* Footer Credit */
+    .credit-footer {
+        text-align: center;
+        color: #a8dadc;
+        font-size: 1.5rem;
+        margin-top: 50px;
+        border-top: 2px dashed #fee440;
+        padding-top: 15px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 4. GIAO DIỆN NGƯỜI DÙNG (FRONTEND)
+# ==========================================
+st.title("🔭 TRẠM RA-ĐA THIÊN VĂN")
+st.markdown("<p style='text-align: center; font-size: 1.5rem; color: #a8dadc;'>Định vị bầu trời tại: THCS Minh Đức, Đồng Nai</p>", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Khung chọn
+lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU:", list(db_thien_the.keys()))
+
+if st.button("📍 KÍCH HOẠT QUÉT RA-ĐA"):
+    alt, az, khoang_cach_str = tinh_toan_vi_tri(lua_chon)
+    ten_ngan = lua_chon.split(" ", 1)[1] # Lấy tên bỏ icon
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Hiển thị 3 khối thông tin cạnh nhau cho gọn
+    col1, col2, col3 = st.columns(3)
+    with col1: st.metric("ĐỘ CAO", f"{alt:.1f}°")
+    with col2: st.metric("PHƯƠNG VỊ", f"{az:.1f}°")
+    with col3: st.metric("KHOẢNG CÁCH", khoang_cach_str)
+
+    # Biểu đồ Radar Plotly (Đã dọn dẹp sạch sẽ)
+    st.markdown("<h3 style='text-align:center; color:#fee440; margin-top:20px;'>🛰️ MÀN HÌNH ĐỊNH VỊ</h3>", unsafe_allow_html=True)
+    
     fig = go.Figure()
-    for r in rows:
-        if only_visible and not r["visible"]:
-            continue
-        fig.add_trace(go.Scatter(x=[r["Azimuth"]], y=[r["Altitude"]], mode="markers+text", text=[vn(r["Thien the"])], textposition="top center", marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"), showlegend=False))
-    fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb")
-    fig.update_layout(height=460, title="Ban do sao", xaxis_title="Phuong vi (do)", yaxis_title="Do cao (do)")
-    return fig
+    fig.add_trace(go.Scatterpolar(
+        r=[alt if alt > 0 else 0], 
+        theta=[az],
+        mode='markers+text',
+        marker=dict(size=25, color='#fee440', symbol='star'),
+        text=[ten_ngan],
+        textposition="bottom center",
+        textfont=dict(family="VT323", size=20, color="white")
+    ))
 
-
-def to_csv_bytes(rows):
-    if not rows:
-        return b""
-    buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
-    writer.writeheader()
-    writer.writerows(rows)
-    return buf.getvalue().encode("utf-8")
-
-
-def to_excel_bytes(df):
-    out = io.BytesIO()
-    with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="data")
-    return out.getvalue()
-
-
-def render_guidance(target, alt, az):
-    st.markdown("### 🎯 Hướng dẫn chỉnh kính sau khi dò tìm")
+    fig.update_layout(
+        polar=dict(
+            bgcolor="rgba(0, 0, 0, 0.4)",
+            angularaxis=dict(direction="clockwise", period=360, color="#a8dadc", tickfont=dict(size=15)),
+            radialaxis=dict(range=[0, 90], color="#a8dadc", showticklabels=False)
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        margin=dict(l=10, r=10, t=20, b=20),
+        height=350
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Kết luận hướng dẫn
     if alt > 0:
-        text = (
-            f"1) Xoay chân đế hướng **{az:.0f}°** (Bắc = 0°).  \n"
-            f"2) Nâng ống kính lên **{alt:.0f}°**.  \n"
-            "3) Căn tâm bằng kính ngắm, sau đó chỉnh nét bằng vòng focus."
-        )
-        st.markdown(f"<div class='guide'>{text}</div>", unsafe_allow_html=True)
+        st.success(f"**THÀNH CÔNG:** {ten_ngan} đang nằm trên bầu trời! Hãy quay kính hướng **{az:.0f}°** và nâng góc **{alt:.0f}°**.")
     else:
-        st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời, hãy đợi thêm và thử lại.</div>", unsafe_allow_html=True)
+        st.error(f"**CẢNH BÁO:** {ten_ngan} đang nằm dưới đường chân trời. Không thể quan sát lúc này.")
 
-
-def vn(name):
-    return DISPLAY_NAMES.get(name, name)
-
-
-def sidebar():
-    with st.sidebar:
-        st.header("⚙️ Cấu hình quan sát")
-        preset = st.selectbox("📍 Chọn địa điểm quan sát", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset")
-        if preset != "Tùy chỉnh":
-            station = preset
-            d_lat, d_lon = LOCATION_PRESETS[preset]
-        else:
-            station = st.text_input("Tên trạm", "Trạm tùy chỉnh")
-            d_lat, d_lon = DEFAULT_LAT, DEFAULT_LON
-        lat = st.number_input("Vĩ độ", -90.0, 90.0, d_lat, 0.001, format="%.4f")
-        lon = st.number_input("Kinh độ", -180.0, 180.0, d_lon, 0.001, format="%.4f")
-        h = st.slider("Khung dự báo (giờ)", 3, 24, 12, 1)
-        step = st.slider("Bước tính (phút)", 5, 60, 15, 5)
-    return station, lat, lon, h, step
-
-
-def main():
-    st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🔭", layout="wide")
-    apply_theme()
-    st.title("🔭 Kính Thiên Văn STEM")
-    st.caption("🌌 Giao diện rõ ràng • Dễ dùng trong lớp học STEM • Quan sát theo thời gian thực")
-
-    station, lat, lon, horizon_hours, step_minutes = sidebar()
-    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
-    try:
-        planets, earth, ts = get_resources()
-        db = build_db(planets)
-        observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
-        rows, timelines, planner = snapshot(lat, lon, horizon_hours, step_minutes, minute_bucket)
-    except Exception as exc:
-        st.error("❌ Không tải được dữ liệu thiên văn.")
-        st.code(str(exc))
-        st.stop()
-
-    st.write(f"📍 **Trạm:** {station} | **Tọa độ:** {lat:.4f}, {lon:.4f} | 🕒 **Giờ:** {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
-
-    m1, m2, m3 = st.columns(3)
-    vis = len([r for r in rows if r["visible"]])
-    m1.metric("✅ Đang quan sát được", f"{vis}/{len(rows)}")
-    m2.metric("📅 Mục tiêu planner", len(planner))
-    m3.metric("🧭 Tổng đối tượng", len(rows))
-
-    f1, f2, f3 = st.columns([2, 2, 1])
-    group = f1.selectbox("🔎 Lọc nhóm", ["Tất cả", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="group")
-    search = f2.text_input("Tìm thiên thể", "", key="search")
-    only_visible = f3.toggle("Chỉ hiện đang thấy", False, key="only_visible")
-    names = [n for n in db.keys() if (group == "Tất cả" or OBJECT_CATEGORIES.get(n, "") == group) and (search.strip().lower() in n.lower())]
-    if not names:
-        names = list(db.keys())
-    target = st.selectbox("🪐 Chọn thiên thể", names, key="target", format_func=vn)
-
-    if st.button("📍 Dò tìm & quan sát", use_container_width=True):
-        alt, az, dist = compute_alt_az(db[target], observer, ts.now())
-        dist_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoang cach lon"
-        st.session_state.scan = {"target": target, "alt": alt, "az": az, "dist": dist_text}
-
-    if "scan" in st.session_state:
-        r = st.session_state.scan
-        k1, k2 = st.columns(2)
-        k1.metric("Độ cao", f"{r['alt']:.1f}°")
-        k2.metric("Phương vị", f"{r['az']:.1f}°")
-        st.info(f"📏 Khoảng cách ước tính: {r['dist']}")
-        if timelines.get(r["target"]):
-            best = max(timelines[r["target"]], key=lambda x: x["alt"])
-            st.info(f"⏱️ Giờ đề xuất: {best['time']} (GMT+7), độ cao cực đại {best['alt']:.1f}°")
-        render_guidance(vn(r["target"]), r["alt"], r["az"])
-        st.write(f"**🌟 Fun fact:** {FUN_FACTS.get(r['target'], 'Hãy tiếp tục khám phá vũ trụ!')}")
-
-    # Dam bao bo du lieu fun fact luon day du cho cac thien the dang su dung.
-    missing_facts = [name for name in db.keys() if name not in FUN_FACTS]
-    if missing_facts:
-        st.warning("Thiếu Fun Fact cho: " + ", ".join(missing_facts))
-
-    tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan"])
-    with tab1:
-        st.plotly_chart(make_chart(rows, only_visible), use_container_width=True)
-    with tab2:
-        planner_df = pd.DataFrame(planner)
-        st.dataframe(planner_df, use_container_width=True, hide_index=True)
-        st.download_button("⬇️ Tải planner CSV", data=to_csv_bytes(planner), file_name="planner.csv", mime="text/csv")
-        st.download_button("⬇️ Tải planner Excel", data=to_excel_bytes(planner_df), file_name="planner.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    with tab3:
-        summary_rows = [{k: v for k, v in r.items() if k != "visible"} for r in rows]
-        summary_df = pd.DataFrame(summary_rows)
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-        st.download_button("⬇️ Tải tổng quan CSV", data=to_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
-        st.download_button("⬇️ Tải tổng quan Excel", data=to_excel_bytes(summary_df), file_name="summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-
-if __name__ == "__main__":
-    main()
+# ==========================================
+# 5. CREDIT LỚP 9.1
+# ==========================================
+st.markdown("""
+<div class='credit-footer'>
+    Coded with ❤️ by <b>Lớp 9.1</b><br>
+    <i>Sản phẩm dự thi STEM - Viết bằng Python</i> 🐍
+</div>
+""", unsafe_allow_html=True)
