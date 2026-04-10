@@ -1,6 +1,225 @@
+from datetime import datetime, timezone
+import csv
+import io
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from core.astronomy import compute_cached_engine, get_rise_set_info, tinh_toan_vi_tri
+from core.constants import DEFAULT_LAT, DEFAULT_LON, LOCAL_TZ, LOCATION_PRESETS, OBJECT_CATEGORIES, PROFILE_STORE
+from core.storage import safe_json_load, safe_json_save
+from data.catalog import FUN_FACTS
+from ui.charts import sky_map_figure
+from ui.theme import apply_modern_dark_theme
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
+
+def create_csv_bytes(rows):
+    buffer = io.StringIO()
+    if not rows:
+        return "".encode("utf-8")
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
+
+
+def create_excel_bytes(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="planner")
+    return output.getvalue()
+
+
+def render_sidebar():
+    with st.sidebar:
+        st.header("⚙️ Cấu hình quan sát")
+        saved_profiles = safe_json_load(PROFILE_STORE, {})
+        selected_profile = st.selectbox("Profile đã lưu", ["-- Không dùng --"] + list(saved_profiles.keys()))
+        if selected_profile != "-- Không dùng --":
+            profile_data = saved_profiles[selected_profile]
+            default_profile_name = selected_profile
+            default_lat = float(profile_data.get("lat", DEFAULT_LAT))
+            default_lon = float(profile_data.get("lon", DEFAULT_LON))
+        else:
+            default_profile_name = ""
+            default_lat, default_lon = DEFAULT_LAT, DEFAULT_LON
+
+        selected_preset = st.selectbox("Preset địa điểm", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"])
+        if selected_preset == "Tùy chỉnh":
+            station_name = st.text_input("Tên trạm", value=default_profile_name or "Trạm tùy chỉnh")
+        else:
+            station_name = selected_preset
+            default_lat, default_lon = LOCATION_PRESETS[selected_preset]
+
+        latitude = st.number_input("Vĩ độ", min_value=-90.0, max_value=90.0, value=default_lat, step=0.001, format="%.4f")
+        longitude = st.number_input("Kinh độ", min_value=-180.0, max_value=180.0, value=default_lon, step=0.001, format="%.4f")
+        horizon_hours = st.slider("Khung dự báo (giờ)", min_value=3, max_value=24, value=12, step=1)
+        plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
+
+        profile_name = st.text_input("Lưu profile với tên", value=station_name)
+        col_save, col_delete = st.columns(2)
+        with col_save:
+            if st.button("💾 Lưu profile", use_container_width=True) and profile_name.strip():
+                saved_profiles[profile_name.strip()] = {"lat": latitude, "lon": longitude}
+                safe_json_save(PROFILE_STORE, saved_profiles)
+                st.success("Đã lưu profile.")
+        with col_delete:
+            if st.button("🗑 Xóa profile", use_container_width=True) and selected_profile != "-- Không dùng --":
+                saved_profiles.pop(selected_profile, None)
+                safe_json_save(PROFILE_STORE, saved_profiles)
+                st.warning("Đã xóa profile.")
+
+    return station_name, latitude, longitude, horizon_hours, plan_step
+
+
+def main():
+    st.set_page_config(page_title="Kính Thiên Văn Thông Minh", page_icon="🌌", layout="wide", initial_sidebar_state="collapsed")
+    apply_modern_dark_theme()
+
+    st.title("⭐️ KÍNH THIÊN VĂN THÔNG MINH ⭐️")
+    st.markdown("<p class='subtitle'>TRẠM QUAN SÁT STEM • ĐỒNG NAI • THỜI GIAN THỰC</p>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    station_name, latitude, longitude, horizon_hours, plan_step = render_sidebar()
+    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
+    try:
+        db_thien_the, observer, ts, snapshot_rows, planner_rows, timelines = compute_cached_engine(
+            latitude, longitude, horizon_hours, plan_step, minute_bucket
+        )
+    except Exception:
+        st.error("Không thể tải dữ liệu thiên văn. Kiểm tra mạng rồi chạy lại ứng dụng.")
+        st.stop()
+
+    st.caption(
+        f"📍 Trạm: **{station_name}** • Vị trí: **{latitude:.4f}, {longitude:.4f}** • "
+        f"Giờ địa phương: **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')} (GMT+7)**"
+    )
+
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    with c1:
+        category_choice = st.selectbox("Nhóm thiên thể", ["Tất cả", "Hệ Mặt Trời", "Chòm sao", "Sao sáng", "Thiên hà"])
+    with c2:
+        search_text = st.text_input("Tìm nhanh", value="", placeholder="Ví dụ: Sirius")
+    with c3:
+        only_visible = st.toggle("Chỉ hiện mục đang nhìn thấy", value=False)
+    with c4:
+        auto_refresh = st.toggle("Tự động cập nhật", value=False)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    filtered_names = [
+        name
+        for name in db_thien_the
+        if (category_choice == "Tất cả" or OBJECT_CATEGORIES.get(name) == category_choice)
+        and (search_text.strip().lower() in name.lower())
+    ]
+    if not filtered_names:
+        filtered_names = list(db_thien_the.keys())
+    lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU CỦA BẠN:", filtered_names)
+
+    if auto_refresh:
+        refresh_seconds = st.slider("Chu kỳ làm mới (giây)", min_value=10, max_value=120, value=20, step=5)
+        if st_autorefresh is not None:
+            st_autorefresh(interval=refresh_seconds * 1000, key="auto_refresh_timer")
+
+    if "last_result" not in st.session_state:
+        st.session_state.last_result = None
+
+    if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True):
+        alt, az, dist = tinh_toan_vi_tri(lua_chon, db_thien_the, observer, ts)
+        st.session_state.last_result = {"name": lua_chon, "alt": alt, "az": az, "dist": dist}
+
+    if st.session_state.last_result:
+        item = st.session_state.last_result
+        selected = item["name"]
+        alt = item["alt"]
+        az = item["az"]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.metric(label="🌍 ĐỘ CAO (Altitude)", value=f"{alt:.1f}°")
+        with c2:
+            st.metric(label="🧭 PHƯƠNG VỊ (Azimuth)", value=f"{az:.1f}°")
+        st.info(f"📏 Khoảng cách: **{item['dist']}**")
+        selected_timeline = timelines.get(selected, [])
+        if selected_timeline:
+            best_point = max(selected_timeline, key=lambda p: p["alt"])
+            st.info(f"⏱️ Giờ đề xuất: **{best_point['time']} (GMT+7)** • Độ cao cực đại: **{best_point['alt']:.1f}°**")
+        rs_status, rs_message = get_rise_set_info(selected, latitude, longitude)
+        st.caption(f"🌅 Mọc/lặn ({rs_status}): {rs_message}")
+        st.markdown(f"<div class='fun-fact'><b>🌟 FUN FACT:</b> {FUN_FACTS.get(selected, 'Khám phá vũ trụ!')}</div>", unsafe_allow_html=True)
+
+    visible_count = sum(1 for row in snapshot_rows if row["visible"])
+    high_priority_count = sum(1 for row in snapshot_rows if row["Ưu tiên"] == "Cao")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Đang quan sát được", f"{visible_count}/{len(snapshot_rows)}")
+    m2.metric("Mục tiêu ưu tiên cao", high_priority_count)
+    m3.metric("Độ phủ dữ liệu", f"{len(snapshot_rows)} thiên thể")
+
+    tabs = st.tabs(["🌌 Bản đồ sao", "📅 Lập kế hoạch đêm", "📊 Tổng quan thông minh", "🎓 STEM Lab"])
+    with tabs[0]:
+        fig, _ = sky_map_figure(snapshot_rows, only_visible=only_visible)
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tabs[1]:
+        compare_targets = st.multiselect("Chọn tối đa 4 thiên thể để so sánh độ cao", filtered_names, default=[lua_chon])[:4]
+        if compare_targets:
+            fig = go.Figure()
+            x_axis = None
+            for target in compare_targets:
+                timeline = timelines.get(target, [])
+                if not timeline:
+                    continue
+                if x_axis is None:
+                    x_axis = [p["time"] for p in timeline]
+                fig.add_trace(go.Scatter(x=x_axis, y=[p["alt"] for p in timeline], mode="lines+markers", name=target))
+            fig.update_layout(title="Độ cao thiên thể theo thời gian", xaxis_title="Giờ", yaxis_title="Altitude (°)")
+            st.plotly_chart(fig, use_container_width=True)
+        planner_df = pd.DataFrame(planner_rows)
+        st.dataframe(planner_df, use_container_width=True, hide_index=True)
+        st.download_button("⬇️ Planner CSV", data=create_csv_bytes(planner_rows), file_name="planner.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ Planner Excel",
+            data=create_excel_bytes(planner_df),
+            file_name="planner.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    with tabs[2]:
+        summary_rows = [{k: v for k, v in row.items() if k != "visible"} for row in snapshot_rows]
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        st.download_button("⬇️ Tổng quan CSV", data=create_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ Tổng quan Excel",
+            data=create_excel_bytes(summary_df),
+            file_name="summary.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    with tabs[3]:
+        st.subheader("STEM Lab")
+        fact_target = st.selectbox("Chọn thiên thể để học nhanh", list(db_thien_the.keys()), key="stem_fact_target")
+        st.info(FUN_FACTS.get(fact_target, "Khám phá vũ trụ!"))
+        st.checkbox("Chuẩn bị chân máy/kính")
+        st.checkbox("Kiểm tra pin thiết bị")
+        st.checkbox("Xác nhận tọa độ địa điểm")
+        st.checkbox("Xuất planner trước khi quan sát")
+
+    st.caption("✨ Final STEM upgrade - modular architecture")
+
+
+if __name__ == "__main__":
+    main()
 from datetime import datetime, timedelta, timezone
 import csv
 import io
+import json
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -81,6 +300,7 @@ FIXED_TARGET_COORDS = {
     "🌀 Thiên hà Andromeda (M31)": (0.7, 41.2),
     "🌀 Tâm Ngân Hà (Milky Way Center)": (17.75, -29.0),
 }
+PROFILE_STORE = "observer_profiles.json"
 
 
 @st.cache_resource(show_spinner=False)
@@ -209,6 +429,22 @@ def next_visibility_window(obj, observer, ts, horizon_hours=12, step_minutes=10)
     return first_visible, first_hidden
 
 
+def safe_json_load(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def safe_json_save(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 def score_target_for_tonight(name, db_thien_the, observer, ts, horizon_hours=12, step_minutes=15):
     obj = db_thien_the[name]
     timeline = build_timeline_for_object(obj, observer, ts, horizon_hours=horizon_hours, step_minutes=step_minutes)
@@ -219,6 +455,68 @@ def score_target_for_tonight(name, db_thien_the, observer, ts, horizon_hours=12,
     # Score đơn giản để ưu tiên mục tiêu cao và quan sát được lâu.
     score = max_alt * 0.7 + visibility_ratio * 100 * 0.3
     return round(score, 2), round(max_alt, 1), round(visibility_ratio * 100, 1), best_time
+
+
+@st.cache_data(ttl=90, show_spinner=False)
+def compute_cached_engine(latitude, longitude, horizon_hours, step_minutes, minute_bucket):
+    planets, earth, ts = get_astronomy_resources()
+    db_thien_the = build_celestial_db(planets)
+    observer = build_observer(earth, latitude, longitude)
+    t_now = ts.now()
+    now_utc = datetime.now(timezone.utc)
+
+    snapshot_rows = []
+    timeline_by_target = {}
+    planner_rows = []
+
+    for name, obj in db_thien_the.items():
+        alt, az, _ = compute_alt_az(obj, observer, t_now)
+        visible = alt > 0
+        snapshot_rows.append(
+            {
+                "Thiên thể": name,
+                "Nhóm": OBJECT_CATEGORIES.get(name, "Khác"),
+                "Altitude (°)": round(alt, 1),
+                "Azimuth (°)": round(az, 1),
+                "Trạng thái": "Có thể quan sát" if visible else "Dưới chân trời",
+                "Ưu tiên": "Cao" if alt > 30 else ("Trung bình" if alt > 10 else "Thấp"),
+                "visible": visible,
+            }
+        )
+
+        timeline = []
+        for minute in range(0, horizon_hours * 60 + 1, step_minutes):
+            dt_utc = now_utc + timedelta(minutes=minute)
+            t = ts.from_datetime(dt_utc)
+            alt_m, az_m, _ = compute_alt_az(obj, observer, t)
+            timeline.append(
+                {
+                    "time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"),
+                    "alt": round(alt_m, 2),
+                    "az": round(az_m, 2),
+                }
+            )
+        timeline_by_target[name] = timeline
+
+        if OBJECT_CATEGORIES.get(name) != "Thiên hà":
+            max_alt = max(point["alt"] for point in timeline)
+            best_time = max(timeline, key=lambda point: point["alt"])["time"]
+            visible_points = sum(1 for point in timeline if point["alt"] > 0)
+            visibility_ratio = visible_points / max(len(timeline), 1)
+            score = max_alt * 0.7 + visibility_ratio * 100 * 0.3
+            planner_rows.append(
+                {
+                    "Mục tiêu": name,
+                    "Nhóm": OBJECT_CATEGORIES.get(name, "Khác"),
+                    "Điểm ưu tiên": round(score, 2),
+                    "Độ cao cực đại (°)": round(max_alt, 1),
+                    "Tỷ lệ nhìn thấy (%)": round(visibility_ratio * 100, 1),
+                    "Giờ nên ngắm (GMT+7)": best_time,
+                }
+            )
+
+    planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
+    return snapshot_rows, planner_rows, timeline_by_target
 
 
 def create_csv_bytes(rows):
@@ -459,10 +757,20 @@ except Exception:
 db_thien_the = build_celestial_db(planets)
 with st.sidebar:
     st.header("⚙️ Cấu hình quan sát")
+    saved_profiles = safe_json_load(PROFILE_STORE, {})
+    selected_profile = st.selectbox("Profile đã lưu", ["-- Không dùng --"] + list(saved_profiles.keys()))
+    if selected_profile != "-- Không dùng --":
+        profile_data = saved_profiles[selected_profile]
+        default_profile_name = selected_profile
+        default_lat = float(profile_data.get("lat", DEFAULT_LAT))
+        default_lon = float(profile_data.get("lon", DEFAULT_LON))
+    else:
+        default_profile_name = ""
+        default_lat, default_lon = DEFAULT_LAT, DEFAULT_LON
+
     selected_preset = st.selectbox("Preset địa điểm", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"])
     if selected_preset == "Tùy chỉnh":
-        station_name = st.text_input("Tên trạm", value="Trạm tùy chỉnh")
-        default_lat, default_lon = DEFAULT_LAT, DEFAULT_LON
+        station_name = st.text_input("Tên trạm", value=default_profile_name or "Trạm tùy chỉnh")
     else:
         station_name = selected_preset
         default_lat, default_lon = LOCATION_PRESETS[selected_preset]
@@ -470,8 +778,24 @@ with st.sidebar:
     longitude = st.number_input("Kinh độ", min_value=-180.0, max_value=180.0, value=default_lon, step=0.001, format="%.4f")
     horizon_hours = st.slider("Khung dự báo (giờ)", min_value=3, max_value=24, value=12, step=1)
     plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
+    profile_name = st.text_input("Lưu profile với tên", value=station_name)
+    col_save, col_delete = st.columns(2)
+    with col_save:
+        if st.button("💾 Lưu profile", use_container_width=True) and profile_name.strip():
+            saved_profiles[profile_name.strip()] = {"lat": latitude, "lon": longitude}
+            safe_json_save(PROFILE_STORE, saved_profiles)
+            st.success("Đã lưu profile.")
+    with col_delete:
+        if st.button("🗑 Xóa profile", use_container_width=True) and selected_profile != "-- Không dùng --":
+            saved_profiles.pop(selected_profile, None)
+            safe_json_save(PROFILE_STORE, saved_profiles)
+            st.warning("Đã xóa profile.")
 
 observer = build_observer(earth, latitude, longitude)
+minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
+snapshot_rows, planner_rows_cached, timelines_cached = compute_cached_engine(
+    latitude, longitude, horizon_hours, plan_step, minute_bucket
+)
 st.caption(
     f"📍 Trạm: **{station_name}** • Vị trí: **{latitude:.4f}, {longitude:.4f}** • "
     f"Giờ địa phương: **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')} (GMT+7)**"
@@ -541,11 +865,18 @@ if st.session_state.last_result:
         unsafe_allow_html=True,
     )
 
-    best_time_local, best_alt = best_observation_time(
-        lua_chon, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
-    )
+    selected_timeline = timelines_cached.get(lua_chon, [])
+    if selected_timeline:
+        best_point = max(selected_timeline, key=lambda point: point["alt"])
+        best_time_text = best_point["time"]
+        best_alt = best_point["alt"]
+    else:
+        best_time_local, best_alt = best_observation_time(
+            lua_chon, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
+        )
+        best_time_text = best_time_local.strftime("%H:%M")
     st.info(
-        f"⏱️ Thời điểm đề xuất trong {horizon_hours} giờ tới: **{best_time_local.strftime('%H:%M')} (GMT+7)** "
+        f"⏱️ Thời điểm đề xuất trong {horizon_hours} giờ tới: **{best_time_text} (GMT+7)** "
         f"với độ cao cực đại khoảng **{best_alt:.1f}°**."
     )
     rs_status, rs_message = get_rise_set_info(lua_chon, latitude, longitude)
@@ -576,8 +907,6 @@ if st.session_state.last_result:
         unsafe_allow_html=True,
     )
 
-current_t = ts.now()
-snapshot_rows = build_sky_snapshot_rows(db_thien_the, observer, current_t)
 visible_count = sum(1 for row in snapshot_rows if row["visible"])
 high_priority_count = sum(1 for row in snapshot_rows if row["Ưu tiên"] == "Cao")
 metric_col1, metric_col2, metric_col3 = st.columns(3)
@@ -588,7 +917,7 @@ with metric_col2:
 with metric_col3:
     st.metric("Độ phủ dữ liệu", f"{len(snapshot_rows)} thiên thể")
 
-tabs = st.tabs(["🌌 Bản đồ sao", "📅 Lập kế hoạch đêm", "📊 Tổng quan thông minh"])
+tabs = st.tabs(["🌌 Bản đồ sao", "📅 Lập kế hoạch đêm", "📊 Tổng quan thông minh", "🎓 STEM Lab"])
 
 with tabs[0]:
     st.caption("Di chuột vào các điểm để xem thông tin chi tiết • Xanh = Có thể quan sát")
@@ -609,9 +938,9 @@ with tabs[1]:
         time_axis = None
         timeline_fig = go.Figure()
         for target in compare_targets:
-            timeline = build_timeline_for_object(
-                db_thien_the[target], observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
-            )
+            timeline = timelines_cached.get(target, [])
+            if not timeline:
+                continue
             if time_axis is None:
                 time_axis = [p["time"] for p in timeline]
             timeline_fig.add_trace(
@@ -629,28 +958,11 @@ with tabs[1]:
         st.info("Hãy chọn ít nhất 1 thiên thể để xem biểu đồ lập kế hoạch.")
 
     st.markdown("### Tonight Planner")
-    planner_candidates = [name for name in db_thien_the if OBJECT_CATEGORIES.get(name) != "Thiên hà"]
-    planner_rows = []
-    for name in planner_candidates:
-        score, max_alt, vis_pct, best_time = score_target_for_tonight(
-            name, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
-        )
-        planner_rows.append(
-            {
-                "Mục tiêu": name,
-                "Nhóm": OBJECT_CATEGORIES.get(name, "Khác"),
-                "Điểm ưu tiên": score,
-                "Độ cao cực đại (°)": max_alt,
-                "Tỷ lệ nhìn thấy (%)": vis_pct,
-                "Giờ nên ngắm (GMT+7)": best_time,
-            }
-        )
-    planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
-    planner_df = pd.DataFrame(planner_rows)
+    planner_df = pd.DataFrame(planner_rows_cached)
     st.dataframe(planner_df, use_container_width=True, hide_index=True)
     st.download_button(
         label="⬇️ Tải kế hoạch Tonight Planner (CSV)",
-        data=create_csv_bytes(planner_rows),
+        data=create_csv_bytes(planner_rows_cached),
         file_name=f"tonight_planner_{datetime.now(LOCAL_TZ).strftime('%Y%m%d_%H%M')}.csv",
         mime="text/csv",
         use_container_width=True,
@@ -692,16 +1004,44 @@ with tabs[2]:
         for idx, row in enumerate(top_targets, start=1):
             st.write(f"{idx}. {row['Thiên thể']} — Alt {row['Altitude (°)']}° ({row['Trạng thái']})")
         st.markdown("**Cửa sổ quan sát tiếp theo (mục đang chọn):**")
-        start_dt, end_dt = next_visibility_window(
-            db_thien_the[lua_chon], observer, ts, horizon_hours=horizon_hours, step_minutes=max(plan_step, 10)
-        )
-        if start_dt:
-            start_str = start_dt.astimezone(LOCAL_TZ).strftime("%H:%M")
-            end_str = end_dt.astimezone(LOCAL_TZ).strftime("%H:%M") if end_dt else "sau mốc dự báo"
-            st.success(f"{lua_chon}: bắt đầu thấy từ **{start_str}**, kéo dài đến **{end_str}** (GMT+7).")
+        selected_timeline = timelines_cached.get(lua_chon, [])
+        if selected_timeline:
+            vis_times = [p["time"] for p in selected_timeline if p["alt"] > 0]
+            if vis_times:
+                st.success(f"{lua_chon}: bắt đầu thấy từ **{vis_times[0]}**, kéo dài đến **{vis_times[-1]}** (GMT+7).")
+            else:
+                st.warning(f"{lua_chon} chưa lên chân trời trong {horizon_hours} giờ tới.")
         else:
             st.warning(f"{lua_chon} chưa lên chân trời trong {horizon_hours} giờ tới.")
     else:
         st.warning("Không có dữ liệu tóm tắt.")
+
+with tabs[3]:
+    st.subheader("STEM Lab - học nhanh tại chỗ")
+    st.markdown(
+        "Phần này giúp học sinh vừa quan sát vừa học: chọn mục tiêu, xem fact nhanh, làm mini-quiz và checklist buổi quan sát."
+    )
+    fact_target = st.selectbox("Chọn thiên thể để học nhanh", list(db_thien_the.keys()), key="stem_fact_target")
+    st.info(fun_facts.get(fact_target, "Khám phá vũ trụ!"))
+
+    quiz_bank = {
+        "Mặt Trăng": ("Mặt Trăng đang rời xa Trái Đất mỗi năm khoảng bao nhiêu?", ["3.8 cm", "3.8 m", "38 cm"], 0),
+        "Sao Kim": ("Điểm đặc biệt của Sao Kim là gì?", ["Quay ngược chiều", "Không có khí quyển", "Không có mây"], 0),
+        "Polaris": ("Sao Bắc Cực giúp làm gì?", ["Chỉ hướng Bắc", "Đo nhiệt độ", "Dự báo mưa"], 0),
+    }
+    quiz_key = st.selectbox("Mini quiz", list(quiz_bank.keys()))
+    q_text, choices, correct_idx = quiz_bank[quiz_key]
+    answer = st.radio(q_text, choices, key="stem_quiz_answer")
+    if st.button("Kiểm tra đáp án", key="stem_quiz_check"):
+        if choices.index(answer) == correct_idx:
+            st.success("Chính xác! Bạn đang nắm kiến thức rất tốt.")
+        else:
+            st.error(f"Chưa đúng. Đáp án đúng là: {choices[correct_idx]}")
+
+    st.markdown("### Checklist buổi quan sát")
+    st.checkbox("Chuẩn bị chân máy / kính thiên văn")
+    st.checkbox("Kiểm tra pin thiết bị và đèn đỏ")
+    st.checkbox("Xác nhận tọa độ địa điểm quan sát")
+    st.checkbox("Xuất kế hoạch Tonight Planner trước khi ra hiện trường")
 
 st.caption("✨ Sản phẩm của lớp 9.1 - Viết bằng Python với thư viện Skyfield và Streamlit")
