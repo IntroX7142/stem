@@ -1,3 +1,520 @@
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import csv
+import io
+import tempfile
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from skyfield.api import Loader, Star, Topos, load
+
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
+
+try:
+    from astroplan import FixedTarget, Observer
+    from astropy import units as u
+    from astropy.coordinates import EarthLocation, SkyCoord
+    from astropy.time import Time as AstroTime
+
+    ASTROPLAN_AVAILABLE = True
+except Exception:
+    ASTROPLAN_AVAILABLE = False
+
+
+DEFAULT_LAT = 10.9500
+DEFAULT_LON = 107.0100
+LOCAL_TZ = timezone(timedelta(hours=7))
+PROFILE_STORE = "observer_profiles.json"
+
+SOLAR_SYSTEM_KEYS = {
+    "☀️ MẶT TRỜI",
+    "🌕 MẶT TRĂNG",
+    "🪐 Sao Thủy (Mercury)",
+    "🪐 Sao Kim (Venus)",
+    "🪐 Sao Hỏa (Mars)",
+    "🪐 Sao Mộc (Jupiter)",
+    "🪐 Sao Thổ (Saturn)",
+    "🪐 Sao Thiên Vương (Uranus)",
+    "🪐 Sao Hải Vương (Neptune)",
+}
+
+OBJECT_CATEGORIES = {
+    "☀️ MẶT TRỜI": "Hệ Mặt Trời",
+    "🌕 MẶT TRĂNG": "Hệ Mặt Trời",
+    "🪐 Sao Thủy (Mercury)": "Hệ Mặt Trời",
+    "🪐 Sao Kim (Venus)": "Hệ Mặt Trời",
+    "🪐 Sao Hỏa (Mars)": "Hệ Mặt Trời",
+    "🪐 Sao Mộc (Jupiter)": "Hệ Mặt Trời",
+    "🪐 Sao Thổ (Saturn)": "Hệ Mặt Trời",
+    "🪐 Sao Thiên Vương (Uranus)": "Hệ Mặt Trời",
+    "🪐 Sao Hải Vương (Neptune)": "Hệ Mặt Trời",
+    "✨ Chòm Gấu Lớn (Ursa Major)": "Chòm sao",
+    "✨ Chòm Thợ Săn (Orion)": "Chòm sao",
+    "✨ Chòm Bọ Cạp (Scorpius)": "Chòm sao",
+    "✨ Chòm Cassiopeia": "Chòm sao",
+    "✨ Chòm Sư Tử (Leo)": "Chòm sao",
+    "✨ Chòm Thiên Nga (Cygnus)": "Chòm sao",
+    "⭐️ Sao Bắc Cực (Polaris)": "Sao sáng",
+    "⭐️ Sao Sirius": "Sao sáng",
+    "⭐️ Sao Betelgeuse": "Sao sáng",
+    "⭐️ Sao Vega": "Sao sáng",
+    "🌀 Thiên hà Andromeda (M31)": "Thiên hà",
+    "🌀 Tâm Ngân Hà (Milky Way Center)": "Thiên hà",
+}
+
+LOCATION_PRESETS = {
+    "THCS Minh Đức (Đồng Nai)": (10.9500, 107.0100),
+    "TP.HCM": (10.7769, 106.7009),
+    "Hà Nội": (21.0285, 105.8542),
+    "Đà Nẵng": (16.0544, 108.2022),
+    "Cần Thơ": (10.0452, 105.7469),
+    "Nha Trang": (12.2388, 109.1967),
+}
+
+FIXED_TARGET_COORDS = {
+    "✨ Chòm Gấu Lớn (Ursa Major)": (11.0, 50.0),
+    "✨ Chòm Thợ Săn (Orion)": (5.5, 0.0),
+    "✨ Chòm Bọ Cạp (Scorpius)": (16.8, -30.0),
+    "✨ Chòm Cassiopeia": (1.0, 62.0),
+    "✨ Chòm Sư Tử (Leo)": (10.5, 15.0),
+    "✨ Chòm Thiên Nga (Cygnus)": (20.7, 40.0),
+    "⭐️ Sao Bắc Cực (Polaris)": (2.53, 89.26),
+    "⭐️ Sao Sirius": (6.7525, -16.7161),
+    "⭐️ Sao Betelgeuse": (5.9195, 7.4073),
+    "⭐️ Sao Vega": (18.6167, 38.7833),
+    "🌀 Thiên hà Andromeda (M31)": (0.7, 41.2),
+    "🌀 Tâm Ngân Hà (Milky Way Center)": (17.75, -29.0),
+}
+
+FUN_FACTS = {
+    "☀️ MẶT TRỜI": "Mặt Trời chiếm 99.8% khối lượng Hệ Mặt Trời!",
+    "🌕 MẶT TRĂNG": "Mặt Trăng đang rời xa Trái Đất khoảng 3.8 cm mỗi năm.",
+    "🪐 Sao Thủy (Mercury)": "Sao Thủy quay quanh Mặt Trời chỉ trong 88 ngày Trái Đất.",
+    "🪐 Sao Kim (Venus)": "Sao Kim quay ngược chiều so với phần lớn hành tinh khác.",
+    "🪐 Sao Hỏa (Mars)": "Sao Hỏa có Olympus Mons, núi lửa lớn nhất Hệ Mặt Trời.",
+    "🪐 Sao Mộc (Jupiter)": "Sao Mộc có cơn bão Lớn Đỏ tồn tại hàng trăm năm.",
+    "🪐 Sao Thổ (Saturn)": "Sao Thổ nổi tiếng với hệ vành đai băng và đá.",
+    "🪐 Sao Thiên Vương (Uranus)": "Sao Thiên Vương quay nghiêng gần như nằm ngang.",
+    "🪐 Sao Hải Vương (Neptune)": "Neptune có gió rất mạnh, thuộc loại mạnh nhất Hệ Mặt Trời.",
+    "✨ Chòm Gấu Lớn (Ursa Major)": "Chòm Gấu Lớn chứa Bắc Đẩu, hữu ích để định hướng.",
+    "✨ Chòm Thợ Săn (Orion)": "Orion dễ nhận dạng với 3 sao thẳng hàng ở phần đai.",
+    "✨ Chòm Bọ Cạp (Scorpius)": "Scorpius nổi bật ở bầu trời mùa hè bán cầu Bắc.",
+    "✨ Chòm Cassiopeia": "Cassiopeia có hình chữ W rất dễ nhận biết.",
+    "✨ Chòm Sư Tử (Leo)": "Leo thường xuất hiện rõ vào mùa xuân.",
+    "✨ Chòm Thiên Nga (Cygnus)": "Cygnus tạo hình chữ thập lớn trên bầu trời.",
+    "⭐️ Sao Bắc Cực (Polaris)": "Polaris gần cực Bắc thiên cầu, dùng để xác định hướng Bắc.",
+    "⭐️ Sao Sirius": "Sirius là sao sáng nhất trên bầu trời đêm.",
+    "⭐️ Sao Betelgeuse": "Betelgeuse là sao khổng lồ đỏ thuộc chòm Orion.",
+    "⭐️ Sao Vega": "Vega từng là sao Bắc Cực trong quá khứ xa.",
+    "🌀 Thiên hà Andromeda (M31)": "Andromeda là thiên hà lớn gần Ngân Hà.",
+    "🌀 Tâm Ngân Hà (Milky Way Center)": "Tâm Ngân Hà chứa hố đen Sagittarius A*.",
+}
+
+
+def safe_json_load(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def safe_json_save(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def apply_modern_dark_theme():
+    st.markdown(
+        """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    .stApp { background: radial-gradient(circle at 20% -10%, #18223d 0%, #0d1428 45%, #090f1d 100%); font-family: 'Inter', system-ui, sans-serif; color: #e6edf7; }
+    .block-container { padding-top: 2rem; max-width: 1200px; }
+    h1 { font-size: 2.4rem !important; color: #dbeafe !important; }
+    .subtitle { color: #9fb0cc; text-align: center; margin-bottom: 8px; }
+    .section-card { background: linear-gradient(180deg, rgba(20, 30, 52, 0.85) 0%, rgba(12, 20, 38, 0.9) 100%); border: 1px solid rgba(125, 160, 220, 0.22); border-radius: 16px; padding: 14px 18px; margin: 8px 0 16px; }
+    .fun-fact { background: rgba(12, 22, 39, 0.85); border: 1px solid rgba(125, 160, 220, 0.35); border-radius: 14px; padding: 14px 16px; margin: 12px 0; }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+
+@st.cache_resource(show_spinner=False)
+def get_astronomy_resources():
+    errors = []
+    try:
+        planets = load("de421.bsp")
+        ts = load.timescale()
+        return planets, planets["earth"], ts
+    except Exception as exc:
+        errors.append(f"default-loader: {exc}")
+    try:
+        skyfield_tmp = Path(tempfile.gettempdir()) / "skyfield_data_cache"
+        skyfield_tmp.mkdir(parents=True, exist_ok=True)
+        loader = Loader(str(skyfield_tmp))
+        planets = loader("de421.bsp")
+        ts = loader.timescale()
+        return planets, planets["earth"], ts
+    except Exception as exc:
+        errors.append(f"tmp-loader: {exc}")
+    raise RuntimeError("Không tải được dữ liệu thiên văn de421.bsp. " + " | ".join(errors))
+
+
+def build_celestial_db(planets):
+    return {
+        "☀️ MẶT TRỜI": planets["sun"],
+        "🌕 MẶT TRĂNG": planets["moon"],
+        "🪐 Sao Thủy (Mercury)": planets["mercury"],
+        "🪐 Sao Kim (Venus)": planets["venus"],
+        "🪐 Sao Hỏa (Mars)": planets["mars"],
+        "🪐 Sao Mộc (Jupiter)": planets["jupiter barycenter"],
+        "🪐 Sao Thổ (Saturn)": planets["saturn barycenter"],
+        "🪐 Sao Thiên Vương (Uranus)": planets["uranus barycenter"],
+        "🪐 Sao Hải Vương (Neptune)": planets["neptune barycenter"],
+        "✨ Chòm Gấu Lớn (Ursa Major)": Star(ra_hours=11.0, dec_degrees=50.0),
+        "✨ Chòm Thợ Săn (Orion)": Star(ra_hours=5.5, dec_degrees=0.0),
+        "✨ Chòm Bọ Cạp (Scorpius)": Star(ra_hours=16.8, dec_degrees=-30.0),
+        "✨ Chòm Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
+        "✨ Chòm Sư Tử (Leo)": Star(ra_hours=10.5, dec_degrees=15.0),
+        "✨ Chòm Thiên Nga (Cygnus)": Star(ra_hours=20.7, dec_degrees=40.0),
+        "⭐️ Sao Bắc Cực (Polaris)": Star(ra_hours=2.53, dec_degrees=89.26),
+        "⭐️ Sao Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
+        "⭐️ Sao Betelgeuse": Star(ra_hours=5.9195, dec_degrees=7.4073),
+        "⭐️ Sao Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
+        "🌀 Thiên hà Andromeda (M31)": Star(ra_hours=0.7, dec_degrees=41.2),
+        "🌀 Tâm Ngân Hà (Milky Way Center)": Star(ra_hours=17.75, dec_degrees=-29.0),
+    }
+
+
+def build_observer(earth, latitude, longitude):
+    return earth + Topos(latitude_degrees=latitude, longitude_degrees=longitude)
+
+
+def compute_alt_az(obj, observer, t):
+    astrometric = observer.at(t).observe(obj)
+    alt, az, distance = astrometric.apparent().altaz()
+    return alt.degrees, az.degrees, distance
+
+
+def tinh_toan_vi_tri(name, db, observer, ts):
+    obj = db[name]
+    alt, az, distance = compute_alt_az(obj, observer, ts.now())
+    if name in SOLAR_SYSTEM_KEYS and hasattr(distance, "km"):
+        return alt, az, f"{distance.km:,.0f} km"
+    return alt, az, "Xa vô tận (hàng trăm năm ánh sáng)"
+
+
+@st.cache_data(ttl=90, show_spinner=False)
+def compute_cached_engine(latitude, longitude, horizon_hours, step_minutes, minute_bucket):
+    planets, earth, ts = get_astronomy_resources()
+    db = build_celestial_db(planets)
+    observer = build_observer(earth, latitude, longitude)
+    now_utc = datetime.now(timezone.utc)
+    t_now = ts.now()
+
+    snapshot_rows = []
+    timeline_by_target = {}
+    planner_rows = []
+
+    for name, obj in db.items():
+        alt, az, _ = compute_alt_az(obj, observer, t_now)
+        visible = alt > 0
+        snapshot_rows.append(
+            {
+                "Thiên thể": name,
+                "Nhóm": OBJECT_CATEGORIES.get(name, "Khác"),
+                "Altitude (°)": round(alt, 1),
+                "Azimuth (°)": round(az, 1),
+                "Trạng thái": "Có thể quan sát" if visible else "Dưới chân trời",
+                "Ưu tiên": "Cao" if alt > 30 else ("Trung bình" if alt > 10 else "Thấp"),
+                "visible": visible,
+            }
+        )
+
+        timeline = []
+        for minute in range(0, horizon_hours * 60 + 1, step_minutes):
+            dt_utc = now_utc + timedelta(minutes=minute)
+            alt_m, az_m, _ = compute_alt_az(obj, observer, ts.from_datetime(dt_utc))
+            timeline.append({"time": dt_utc.astimezone(LOCAL_TZ).strftime("%H:%M"), "alt": round(alt_m, 2), "az": round(az_m, 2)})
+        timeline_by_target[name] = timeline
+
+        if OBJECT_CATEGORIES.get(name) != "Thiên hà":
+            max_alt = max(point["alt"] for point in timeline)
+            best_time = max(timeline, key=lambda point: point["alt"])["time"]
+            visible_points = sum(1 for point in timeline if point["alt"] > 0)
+            visibility_ratio = visible_points / max(len(timeline), 1)
+            score = max_alt * 0.7 + visibility_ratio * 100 * 0.3
+            planner_rows.append(
+                {
+                    "Mục tiêu": name,
+                    "Nhóm": OBJECT_CATEGORIES.get(name, "Khác"),
+                    "Điểm ưu tiên": round(score, 2),
+                    "Độ cao cực đại (°)": round(max_alt, 1),
+                    "Tỷ lệ nhìn thấy (%)": round(visibility_ratio * 100, 1),
+                    "Giờ nên ngắm (GMT+7)": best_time,
+                }
+            )
+
+    planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
+    return snapshot_rows, planner_rows, timeline_by_target
+
+
+def get_rise_set_info(target_name, latitude, longitude):
+    if not ASTROPLAN_AVAILABLE:
+        return "Chưa bật", "Cài astropy + astroplan để xem giờ mọc/lặn."
+    try:
+        location = EarthLocation.from_geodetic(longitude * u.deg, latitude * u.deg)
+        observer = Observer(location=location, timezone="Asia/Ho_Chi_Minh")
+        now = AstroTime.now()
+        if target_name == "☀️ MẶT TRỜI":
+            rise_time = observer.sun_rise_time(now, which="next")
+            set_time = observer.sun_set_time(now, which="next")
+        elif target_name == "🌕 MẶT TRĂNG":
+            rise_time = observer.moon_rise_time(now, which="next")
+            set_time = observer.moon_set_time(now, which="next")
+        elif target_name in FIXED_TARGET_COORDS:
+            ra_hours, dec_deg = FIXED_TARGET_COORDS[target_name]
+            coord = SkyCoord(ra=ra_hours * u.hourangle, dec=dec_deg * u.deg, frame="icrs")
+            target = FixedTarget(name=target_name, coord=coord)
+            rise_time = observer.target_rise_time(now, target, which="next")
+            set_time = observer.target_set_time(now, target, which="next")
+        else:
+            return "Giới hạn", "Mục tiêu này chưa hỗ trợ mọc/lặn."
+        rise_local = rise_time.to_datetime(timezone=LOCAL_TZ).strftime("%H:%M")
+        set_local = set_time.to_datetime(timezone=LOCAL_TZ).strftime("%H:%M")
+        return "Sẵn sàng", f"Mọc: {rise_local} • Lặn: {set_local} (GMT+7)"
+    except Exception:
+        return "Không khả dụng", "Không tính được giờ mọc/lặn tại vị trí hiện tại."
+
+
+def sky_map_figure(rows, only_visible=False):
+    fig = go.Figure()
+    for row in rows:
+        if only_visible and not row["visible"]:
+            continue
+        ten = row["Thiên thể"]
+        alt = row["Altitude (°)"]
+        az = row["Azimuth (°)"]
+        visible = row["visible"]
+        color = "#67e8f9" if visible else "#64748b"
+        symbol = "star" if ("✨" in ten or "⭐️" in ten) else "circle"
+        fig.add_trace(
+            go.Scatter(
+                x=[az],
+                y=[alt],
+                mode="markers+text",
+                marker=dict(size=16 if visible else 10, color=color, symbol=symbol),
+                text=[ten[:12]],
+                textposition="top center",
+                name=ten,
+                showlegend=False,
+            )
+        )
+    fig.add_hline(y=0, line_dash="dash", line_color="#f1faee")
+    fig.update_layout(title="🌌 Bản đồ sao tương tác", xaxis_title="Azimuth (°)", yaxis_title="Altitude (°)", height=520)
+    return fig
+
+
+def create_csv_bytes(rows):
+    buffer = io.StringIO()
+    if not rows:
+        return "".encode("utf-8")
+    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer.writeheader()
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
+
+
+def create_excel_bytes(df):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="planner")
+    return output.getvalue()
+
+
+def render_sidebar():
+    with st.sidebar:
+        st.header("⚙️ Cấu hình quan sát")
+        saved_profiles = safe_json_load(PROFILE_STORE, {})
+        selected_profile = st.selectbox("Profile đã lưu", ["-- Không dùng --"] + list(saved_profiles.keys()), key="profile_select")
+        if selected_profile != "-- Không dùng --":
+            p = saved_profiles[selected_profile]
+            default_name = selected_profile
+            default_lat = float(p.get("lat", DEFAULT_LAT))
+            default_lon = float(p.get("lon", DEFAULT_LON))
+        else:
+            default_name = ""
+            default_lat, default_lon = DEFAULT_LAT, DEFAULT_LON
+
+        selected_preset = st.selectbox("Preset địa điểm", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset_select")
+        if selected_preset == "Tùy chỉnh":
+            station_name = st.text_input("Tên trạm", value=default_name or "Trạm tùy chỉnh")
+        else:
+            station_name = selected_preset
+            default_lat, default_lon = LOCATION_PRESETS[selected_preset]
+
+        latitude = st.number_input("Vĩ độ", min_value=-90.0, max_value=90.0, value=default_lat, step=0.001, format="%.4f")
+        longitude = st.number_input("Kinh độ", min_value=-180.0, max_value=180.0, value=default_lon, step=0.001, format="%.4f")
+        horizon_hours = st.slider("Khung dự báo (giờ)", min_value=3, max_value=24, value=12, step=1)
+        plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
+
+        profile_name = st.text_input("Lưu profile với tên", value=station_name)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("💾 Lưu profile", use_container_width=True) and profile_name.strip():
+                saved_profiles[profile_name.strip()] = {"lat": latitude, "lon": longitude}
+                safe_json_save(PROFILE_STORE, saved_profiles)
+                st.success("Đã lưu profile.")
+        with c2:
+            if st.button("🗑 Xóa profile", use_container_width=True) and selected_profile != "-- Không dùng --":
+                saved_profiles.pop(selected_profile, None)
+                safe_json_save(PROFILE_STORE, saved_profiles)
+                st.warning("Đã xóa profile.")
+
+    return station_name, latitude, longitude, horizon_hours, plan_step
+
+
+def main():
+    st.set_page_config(page_title="Kính Thiên Văn Thông Minh", page_icon="🌌", layout="wide", initial_sidebar_state="collapsed")
+    apply_modern_dark_theme()
+
+    st.title("⭐️ KÍNH THIÊN VĂN THÔNG MINH ⭐️")
+    st.markdown("<p class='subtitle'>TRẠM QUAN SÁT STEM • THỜI GIAN THỰC</p>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    station_name, latitude, longitude, horizon_hours, plan_step = render_sidebar()
+    minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
+
+    try:
+        planets, earth, ts = get_astronomy_resources()
+        db = build_celestial_db(planets)
+        observer = build_observer(earth, latitude, longitude)
+        snapshot_rows, planner_rows, timelines = compute_cached_engine(latitude, longitude, horizon_hours, plan_step, minute_bucket)
+    except Exception as exc:
+        st.error("Không thể tải dữ liệu thiên văn.")
+        st.code(str(exc))
+        st.stop()
+
+    st.caption(
+        f"📍 Trạm: **{station_name}** • Vị trí: **{latitude:.4f}, {longitude:.4f}** • "
+        f"Giờ địa phương: **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')} (GMT+7)**"
+    )
+
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    with c1:
+        category_choice = st.selectbox("Nhóm thiên thể", ["Tất cả", "Hệ Mặt Trời", "Chòm sao", "Sao sáng", "Thiên hà"], key="group_select")
+    with c2:
+        search_text = st.text_input("Tìm nhanh", value="", placeholder="Ví dụ: Sirius", key="quick_search")
+    with c3:
+        only_visible = st.toggle("Chỉ hiện mục đang nhìn thấy", value=False, key="only_visible")
+    with c4:
+        auto_refresh = st.toggle("Tự động cập nhật", value=False, key="auto_refresh")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    filtered_names = [
+        name
+        for name in db
+        if (category_choice == "Tất cả" or OBJECT_CATEGORIES.get(name) == category_choice)
+        and (search_text.strip().lower() in name.lower())
+    ]
+    if not filtered_names:
+        filtered_names = list(db.keys())
+    lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU CỦA BẠN:", filtered_names, key="target_select")
+
+    if auto_refresh and st_autorefresh is not None:
+        refresh_seconds = st.slider("Chu kỳ làm mới (giây)", min_value=10, max_value=120, value=20, step=5)
+        st_autorefresh(interval=refresh_seconds * 1000, key="auto_refresh_timer")
+
+    if "last_result" not in st.session_state:
+        st.session_state.last_result = None
+
+    if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True):
+        alt, az, dist = tinh_toan_vi_tri(lua_chon, db, observer, ts)
+        st.session_state.last_result = {"name": lua_chon, "alt": alt, "az": az, "dist": dist}
+
+    if st.session_state.last_result:
+        item = st.session_state.last_result
+        selected = item["name"]
+        alt = item["alt"]
+        az = item["az"]
+        k1, k2 = st.columns(2)
+        k1.metric("🌍 ĐỘ CAO", f"{alt:.1f}°")
+        k2.metric("🧭 PHƯƠNG VỊ", f"{az:.1f}°")
+        st.info(f"📏 Khoảng cách: **{item['dist']}**")
+        selected_timeline = timelines.get(selected, [])
+        if selected_timeline:
+            best_point = max(selected_timeline, key=lambda p: p["alt"])
+            st.info(f"⏱️ Giờ đề xuất: **{best_point['time']}** • Độ cao cực đại: **{best_point['alt']:.1f}°**")
+        rs_status, rs_msg = get_rise_set_info(selected, latitude, longitude)
+        st.caption(f"🌅 Mọc/lặn ({rs_status}): {rs_msg}")
+        st.markdown(f"<div class='fun-fact'><b>🌟 FUN FACT:</b> {FUN_FACTS.get(selected, 'Khám phá vũ trụ!')}</div>", unsafe_allow_html=True)
+
+    visible_count = sum(1 for row in snapshot_rows if row["visible"])
+    high_priority_count = sum(1 for row in snapshot_rows if row["Ưu tiên"] == "Cao")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Đang quan sát được", f"{visible_count}/{len(snapshot_rows)}")
+    m2.metric("Mục tiêu ưu tiên cao", high_priority_count)
+    m3.metric("Độ phủ dữ liệu", f"{len(snapshot_rows)} thiên thể")
+
+    tabs = st.tabs(["🌌 Bản đồ sao", "📅 Planner", "📊 Tổng quan", "🎓 STEM Lab"])
+    with tabs[0]:
+        st.plotly_chart(sky_map_figure(snapshot_rows, only_visible=only_visible), use_container_width=True)
+    with tabs[1]:
+        compare_targets = st.multiselect("Chọn tối đa 4 thiên thể", filtered_names, default=[lua_chon], key="compare_targets")[:4]
+        if compare_targets:
+            fig = go.Figure()
+            x_axis = None
+            for target in compare_targets:
+                timeline = timelines.get(target, [])
+                if timeline:
+                    if x_axis is None:
+                        x_axis = [p["time"] for p in timeline]
+                    fig.add_trace(go.Scatter(x=x_axis, y=[p["alt"] for p in timeline], mode="lines+markers", name=target))
+            fig.update_layout(title="Độ cao theo thời gian", xaxis_title="Giờ", yaxis_title="Altitude (°)")
+            st.plotly_chart(fig, use_container_width=True)
+        planner_df = pd.DataFrame(planner_rows)
+        st.dataframe(planner_df, use_container_width=True, hide_index=True)
+        st.download_button("⬇️ Planner CSV", data=create_csv_bytes(planner_rows), file_name="planner.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ Planner Excel",
+            data=create_excel_bytes(planner_df),
+            file_name="planner.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    with tabs[2]:
+        summary_rows = [{k: v for k, v in row.items() if k != "visible"} for row in snapshot_rows]
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        st.download_button("⬇️ Tổng quan CSV", data=create_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
+        st.download_button(
+            "⬇️ Tổng quan Excel",
+            data=create_excel_bytes(summary_df),
+            file_name="summary.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    with tabs[3]:
+        fact_target = st.selectbox("Chọn thiên thể để học nhanh", list(db.keys()), key="stem_fact_target")
+        st.info(FUN_FACTS.get(fact_target, "Khám phá vũ trụ!"))
+        st.checkbox("Chuẩn bị thiết bị")
+        st.checkbox("Kiểm tra pin")
+        st.checkbox("Xác nhận tọa độ")
+        st.checkbox("Xuất planner trước khi quan sát")
+
+    st.caption("✨ Final single-file upgrade")
+
+
+if __name__ == "__main__":
+    main()
 from datetime import datetime, timezone
 import csv
 import io
@@ -20,23 +537,6 @@ try:
     from streamlit_autorefresh import st_autorefresh
 except Exception:
     st_autorefresh = None
-
-
-def _debug_log(hypothesis_id, location, message, data=None, run_id="pre-fix"):
-    payload = {
-        "sessionId": "82ac6d",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data or {},
-        "timestamp": int(time.time() * 1000),
-    }
-    try:
-        with open("debug-82ac6d.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
 
 
 def create_csv_bytes(rows):
