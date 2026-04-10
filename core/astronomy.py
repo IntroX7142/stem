@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 import tempfile
+import time
 
 import streamlit as st
 from skyfield.api import Loader, Topos, load
@@ -17,6 +19,23 @@ try:
     ASTROPLAN_AVAILABLE = True
 except Exception:
     ASTROPLAN_AVAILABLE = False
+
+
+def _debug_log(hypothesis_id, location, message, data=None, run_id="pre-fix"):
+    payload = {
+        "sessionId": "82ac6d",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open("debug-82ac6d.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 @st.cache_resource(show_spinner=False)
@@ -69,6 +88,20 @@ def tinh_toan_vi_tri(thien_the_chon, db_thien_the, observer, ts):
 
 @st.cache_data(ttl=90, show_spinner=False)
 def compute_cached_engine(latitude, longitude, horizon_hours, step_minutes, minute_bucket):
+    # #region agent log
+    _debug_log(
+        "H1_cache_unserializable",
+        "core/astronomy.py:compute_cached_engine",
+        "compute_cached_engine called",
+        {
+            "latitude": latitude,
+            "longitude": longitude,
+            "horizon_hours": horizon_hours,
+            "step_minutes": step_minutes,
+            "minute_bucket": minute_bucket,
+        },
+    )
+    # #endregion
     planets, earth, ts = get_astronomy_resources()
     db_thien_the = build_celestial_db(planets)
     observer = build_observer(earth, latitude, longitude)
@@ -119,6 +152,21 @@ def compute_cached_engine(latitude, longitude, horizon_hours, step_minutes, minu
             )
 
     planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
+    # #region agent log
+    _debug_log(
+        "H2_return_shape",
+        "core/astronomy.py:compute_cached_engine",
+        "compute_cached_engine return shape",
+        {
+            "db_type": str(type(db_thien_the)),
+            "observer_type": str(type(observer)),
+            "ts_type": str(type(ts)),
+            "snapshot_len": len(snapshot_rows),
+            "planner_len": len(planner_rows),
+            "timeline_targets": len(timeline_by_target),
+        },
+    )
+    # #endregion
     return db_thien_the, observer, ts, snapshot_rows, planner_rows, timeline_by_target
 
 
