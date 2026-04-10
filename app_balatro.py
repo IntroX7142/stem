@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta, timezone
 import csv
 import io
-import json
-import time
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from skyfield.api import Star, Topos, load
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
 
 try:
     from astroplan import FixedTarget, Observer
@@ -18,33 +20,6 @@ try:
     ASTROPLAN_AVAILABLE = True
 except Exception:
     ASTROPLAN_AVAILABLE = False
-
-
-def debug_log(hypothesis_id, location, message, data=None, run_id="pre-fix"):
-    payload = {
-        "sessionId": "82ac6d",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data or {},
-        "timestamp": int(time.time() * 1000),
-    }
-    try:
-        with open("debug-82ac6d.log", "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
-
-
-# #region agent log
-debug_log(
-    "H1_optional_deps",
-    "app_balatro.py:startup_imports",
-    "Optional deps import status",
-    {"astroplan_available": ASTROPLAN_AVAILABLE},
-)
-# #endregion
 
 # ====================== CẤU HÌNH VỊ TRÍ QUAN SÁT ======================
 DEFAULT_LAT = 10.9500
@@ -110,14 +85,8 @@ FIXED_TARGET_COORDS = {
 
 @st.cache_resource(show_spinner=False)
 def get_astronomy_resources():
-    # #region agent log
-    debug_log("H2_ephemeris_load", "app_balatro.py:get_astronomy_resources", "Loading ephemeris started")
-    # #endregion
     planets = load("de421.bsp")
     ts = load.timescale()
-    # #region agent log
-    debug_log("H2_ephemeris_load", "app_balatro.py:get_astronomy_resources", "Loading ephemeris success")
-    # #endregion
     return planets, planets["earth"], ts
 
 
@@ -244,11 +213,12 @@ def score_target_for_tonight(name, db_thien_the, observer, ts, horizon_hours=12,
     obj = db_thien_the[name]
     timeline = build_timeline_for_object(obj, observer, ts, horizon_hours=horizon_hours, step_minutes=step_minutes)
     max_alt = max(point["alt"] for point in timeline)
+    best_time = max(timeline, key=lambda point: point["alt"])["time"]
     visible_points = sum(1 for point in timeline if point["alt"] > 0)
     visibility_ratio = visible_points / max(len(timeline), 1)
     # Score đơn giản để ưu tiên mục tiêu cao và quan sát được lâu.
     score = max_alt * 0.7 + visibility_ratio * 100 * 0.3
-    return round(score, 2), round(max_alt, 1), round(visibility_ratio * 100, 1)
+    return round(score, 2), round(max_alt, 1), round(visibility_ratio * 100, 1), best_time
 
 
 def create_csv_bytes(rows):
@@ -269,14 +239,6 @@ def create_excel_bytes(df):
 
 
 def get_rise_set_info(target_name, latitude, longitude):
-    # #region agent log
-    debug_log(
-        "H4_rise_set_path",
-        "app_balatro.py:get_rise_set_info",
-        "Rise/set requested",
-        {"target_name": target_name, "lat": latitude, "lon": longitude, "astroplan_available": ASTROPLAN_AVAILABLE},
-    )
-    # #endregion
     if not ASTROPLAN_AVAILABLE:
         return "Chưa bật", "Cài thêm astropy + astroplan để xem giờ mọc/lặn."
 
@@ -304,26 +266,39 @@ def get_rise_set_info(target_name, latitude, longitude):
         set_local = set_time.to_datetime(timezone=LOCAL_TZ).strftime("%H:%M")
         return "Sẵn sàng", f"Mọc: {rise_local} • Lặn: {set_local} (GMT+7)"
     except Exception:
-        # #region agent log
-        debug_log(
-            "H4_rise_set_path",
-            "app_balatro.py:get_rise_set_info",
-            "Rise/set failed with exception",
-            {"target_name": target_name},
-        )
-        # #endregion
         return "Không khả dụng", "Không tính được giờ mọc/lặn cho mục tiêu này tại vị trí hiện tại."
 
 
-def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
-    fig = go.Figure()
+def build_sky_snapshot_rows(db_thien_the, observer, t):
     rows = []
-    t = ts.now()
     for ten, obj in db_thien_the.items():
         alt, az, _ = compute_alt_az(obj, observer, t)
         visible = alt > 0
+        rows.append(
+            {
+                "Thiên thể": ten,
+                "Nhóm": OBJECT_CATEGORIES.get(ten, "Khác"),
+                "Altitude (°)": round(alt, 1),
+                "Azimuth (°)": round(az, 1),
+                "Trạng thái": "Có thể quan sát" if visible else "Dưới chân trời",
+                "Ưu tiên": "Cao" if alt > 30 else ("Trung bình" if alt > 10 else "Thấp"),
+                "visible": visible,
+            }
+        )
+    return rows
+
+
+def ve_ban_do_sao_tuong_tac(rows, only_visible=False):
+    fig = go.Figure()
+    filtered_rows = []
+    for row in rows:
+        ten = row["Thiên thể"]
+        alt = row["Altitude (°)"]
+        az = row["Azimuth (°)"]
+        visible = row["visible"]
         if only_visible and not visible:
             continue
+        filtered_rows.append(row)
         color = "#67e8f9" if visible else "#64748b"
         size = 18 if visible else 10
         symbol = "star" if ("✨" in ten or "⭐️" in ten) else "circle"
@@ -348,16 +323,6 @@ def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
                 name=ten,
                 showlegend=False,
             )
-        )
-        rows.append(
-            {
-                "Thiên thể": ten,
-                "Nhóm": OBJECT_CATEGORIES.get(ten, "Khác"),
-                "Altitude (°)": round(alt, 1),
-                "Azimuth (°)": round(az, 1),
-                "Trạng thái": "Có thể quan sát" if visible else "Dưới chân trời",
-                "Ưu tiên": "Cao" if alt > 30 else ("Trung bình" if alt > 10 else "Thấp"),
-            }
         )
     fig.add_hline(
         y=0,
@@ -384,7 +349,7 @@ def ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False):
         margin=dict(l=50, r=30, t=70, b=50),
         font=dict(family="Inter", color="#f0f9ff", size=14),
     )
-    return fig, rows
+    return fig, filtered_rows
 
 # ====================== Giao diện ======================
 def apply_modern_dark_theme():
@@ -488,9 +453,6 @@ st.markdown("---")
 try:
     planets, earth, ts = get_astronomy_resources()
 except Exception:
-    # #region agent log
-    debug_log("H2_ephemeris_load", "app_balatro.py:main_init", "Ephemeris load failed in main")
-    # #endregion
     st.error("Không thể tải dữ liệu thiên văn (de421.bsp). Hãy kiểm tra mạng và chạy lại ứng dụng.")
     st.stop()
 
@@ -510,14 +472,6 @@ with st.sidebar:
     plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
 
 observer = build_observer(earth, latitude, longitude)
-# #region agent log
-debug_log(
-    "H3_observer_build",
-    "app_balatro.py:observer_setup",
-    "Observer created",
-    {"station_name": station_name, "lat": latitude, "lon": longitude},
-)
-# #endregion
 st.caption(
     f"📍 Trạm: **{station_name}** • Vị trí: **{latitude:.4f}, {longitude:.4f}** • "
     f"Giờ địa phương: **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')} (GMT+7)**"
@@ -548,6 +502,10 @@ lua_chon = st.selectbox("🪐 CHỌN MỤC TIÊU CỦA BẠN:", filtered_names, 
 refresh_seconds = 20
 if auto_refresh:
     refresh_seconds = st.slider("Chu kỳ làm mới (giây)", min_value=10, max_value=120, value=20, step=5)
+    if st_autorefresh is not None:
+        st_autorefresh(interval=refresh_seconds * 1000, key="auto_refresh_timer")
+    else:
+        st.info("Để auto-refresh mượt hơn, cài thêm thư viện `streamlit-autorefresh`.")
 
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
@@ -555,18 +513,7 @@ if "last_result" not in st.session_state:
 if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True):
     try:
         alt, az, khoang_cach_str = tinh_toan_vi_tri(lua_chon, db_thien_the, observer, ts)
-        # #region agent log
-        debug_log(
-            "H5_compute_flow",
-            "app_balatro.py:button_compute",
-            "Compute success",
-            {"target": lua_chon, "alt": round(alt, 2), "az": round(az, 2)},
-        )
-        # #endregion
     except Exception:
-        # #region agent log
-        debug_log("H5_compute_flow", "app_balatro.py:button_compute", "Compute failed", {"target": lua_chon})
-        # #endregion
         st.error("Không thể tính vị trí thiên thể lúc này. Vui lòng thử lại sau vài giây.")
         st.stop()
     st.session_state.last_result = {"name": lua_chon, "alt": alt, "az": az, "dist": khoang_cach_str}
@@ -629,12 +576,24 @@ if st.session_state.last_result:
         unsafe_allow_html=True,
     )
 
+current_t = ts.now()
+snapshot_rows = build_sky_snapshot_rows(db_thien_the, observer, current_t)
+visible_count = sum(1 for row in snapshot_rows if row["visible"])
+high_priority_count = sum(1 for row in snapshot_rows if row["Ưu tiên"] == "Cao")
+metric_col1, metric_col2, metric_col3 = st.columns(3)
+with metric_col1:
+    st.metric("Đang quan sát được", f"{visible_count}/{len(snapshot_rows)}")
+with metric_col2:
+    st.metric("Mục tiêu ưu tiên cao", high_priority_count)
+with metric_col3:
+    st.metric("Độ phủ dữ liệu", f"{len(snapshot_rows)} thiên thể")
+
 tabs = st.tabs(["🌌 Bản đồ sao", "📅 Lập kế hoạch đêm", "📊 Tổng quan thông minh"])
 
 with tabs[0]:
     st.caption("Di chuột vào các điểm để xem thông tin chi tiết • Xanh = Có thể quan sát")
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-    fig, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=only_visible)
+    fig, summary_rows = ve_ban_do_sao_tuong_tac(snapshot_rows, only_visible=only_visible)
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -673,10 +632,7 @@ with tabs[1]:
     planner_candidates = [name for name in db_thien_the if OBJECT_CATEGORIES.get(name) != "Thiên hà"]
     planner_rows = []
     for name in planner_candidates:
-        score, max_alt, vis_pct = score_target_for_tonight(
-            name, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
-        )
-        best_time_local, _ = best_observation_time(
+        score, max_alt, vis_pct, best_time = score_target_for_tonight(
             name, db_thien_the, observer, ts, horizon_hours=horizon_hours, step_minutes=plan_step
         )
         planner_rows.append(
@@ -686,7 +642,7 @@ with tabs[1]:
                 "Điểm ưu tiên": score,
                 "Độ cao cực đại (°)": max_alt,
                 "Tỷ lệ nhìn thấy (%)": vis_pct,
-                "Giờ nên ngắm (GMT+7)": best_time_local.strftime("%H:%M"),
+                "Giờ nên ngắm (GMT+7)": best_time,
             }
         )
     planner_rows = sorted(planner_rows, key=lambda row: row["Điểm ưu tiên"], reverse=True)[:8]
@@ -709,7 +665,7 @@ with tabs[1]:
 
 with tabs[2]:
     st.subheader("Bảng tóm tắt quan sát nhanh")
-    _, summary_rows = ve_ban_do_sao_tuong_tac(db_thien_the, observer, ts, only_visible=False)
+    summary_rows = [{k: v for k, v in row.items() if k != "visible"} for row in snapshot_rows]
     if summary_rows:
         visible_count = len([row for row in summary_rows if row["Trạng thái"] == "Có thể quan sát"])
         top_targets = sorted(summary_rows, key=lambda row: row["Altitude (°)"], reverse=True)[:5]
@@ -747,10 +703,5 @@ with tabs[2]:
             st.warning(f"{lua_chon} chưa lên chân trời trong {horizon_hours} giờ tới.")
     else:
         st.warning("Không có dữ liệu tóm tắt.")
-
-if auto_refresh:
-    st.caption(f"Tự động làm mới mỗi {refresh_seconds} giây.")
-    time.sleep(refresh_seconds)
-    st.rerun()
 
 st.caption("✨ Sản phẩm của lớp 9.1 - Viết bằng Python với thư viện Skyfield và Streamlit")
