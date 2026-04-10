@@ -39,8 +39,17 @@ OBJECT_CATEGORIES = {
 FUN_FACTS = {
     "Mat Troi": "Anh sang Mat Troi den Trai Dat sau khoang 8 phut 20 giay.",
     "Mat Trang": "Mat Trang dang roi xa Trai Dat khoang 3.8 cm moi nam.",
+    "Sao Thuy": "Sao Thuy co chu ky quay quanh Mat Troi chi 88 ngay, nhung nhiet do thay doi rat lon.",
+    "Sao Kim": "Sao Kim quay nguoc chieu so voi da so hanh tinh va co khi quyen day dac.",
     "Sao Hoa": "Sao Hoa co Olympus Mons, nui lua lon nhat He Mat Troi.",
+    "Sao Moc": "Sao Moc la hanh tinh lon nhat He Mat Troi, co bao Lon Do ton tai rat lau.",
+    "Sao Tho": "Sao Tho noi tieng voi he vanh dai bang da va bui, rat de nhan ra khi quan sat bang kinh.",
     "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
+    "Sirius": "Sirius la ngoi sao sang nhat tren bau troi dem khi quan sat tu Trai Dat.",
+    "Vega": "Vega tung dong vai tro sao Bac Cuc trong qua khu xa va se tro lai vai tro nay trong tuong lai.",
+    "Orion": "Orion de nhan ra nho 3 ngoi sao thang hang o phan dai.",
+    "Cassiopeia": "Cassiopeia co hinh chu W dac trung, de tim o bau troi ban cau Bac.",
+    "Andromeda": "Andromeda la thien ha lon gan Ngan Ha, co the thay mo nhat bang mat thuong trong troi toi.",
 }
 
 DISPLAY_NAMES = {
@@ -269,6 +278,11 @@ def main():
             st.info(f"⏱️ Giờ đề xuất: {best['time']} (GMT+7), độ cao cực đại {best['alt']:.1f}°")
         render_guidance(vn(r["target"]), r["alt"], r["az"])
         st.write(f"**🌟 Fun fact:** {FUN_FACTS.get(r['target'], 'Hãy tiếp tục khám phá vũ trụ!')}")
+
+    # Dam bao bo du lieu fun fact luon day du cho cac thien the dang su dung.
+    missing_facts = [name for name in db.keys() if name not in FUN_FACTS]
+    if missing_facts:
+        st.warning("Thiếu Fun Fact cho: " + ", ".join(missing_facts))
 
     tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan"])
     with tab1:
