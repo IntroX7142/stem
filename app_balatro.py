@@ -8,7 +8,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from core.astronomy import compute_cached_engine, get_rise_set_info, tinh_toan_vi_tri
+from core.astronomy import build_observer, compute_cached_engine, get_astronomy_resources, get_rise_set_info, tinh_toan_vi_tri
+from data.catalog import build_celestial_db
 from core.constants import DEFAULT_LAT, DEFAULT_LON, LOCAL_TZ, LOCATION_PRESETS, OBJECT_CATEGORIES, PROFILE_STORE
 from core.storage import safe_json_load, safe_json_save
 from data.catalog import FUN_FACTS
@@ -108,7 +109,10 @@ def main():
     station_name, latitude, longitude, horizon_hours, plan_step = render_sidebar()
     minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
     try:
-        db_thien_the, observer, ts, snapshot_rows, planner_rows, timelines = compute_cached_engine(
+        planets, earth, ts = get_astronomy_resources()
+        db_thien_the = build_celestial_db(planets)
+        observer = build_observer(earth, latitude, longitude)
+        snapshot_rows, planner_rows, timelines = compute_cached_engine(
             latitude, longitude, horizon_hours, plan_step, minute_bucket
         )
     except Exception as exc:
