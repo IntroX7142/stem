@@ -250,7 +250,7 @@ def main():
     st.set_page_config(page_title="Kính Thiên Văn STEM", page_icon="🔭", layout="wide")
     apply_theme()
     st.title("🔭 Kính Thiên Văn STEM")
-    st.caption("Hỗ trợ thiên  • Quan sát theo thời gian thực")
+    st.caption("Hỗ trợ thiên văn  • Quan sát theo thời gian thực")
 
     station, lat, lon, horizon_hours, step_minutes = sidebar()
     minute_bucket = int(datetime.now(timezone.utc).timestamp() // 60)
