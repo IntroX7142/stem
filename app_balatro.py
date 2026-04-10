@@ -99,6 +99,9 @@ def render_sidebar():
 
 
 def main():
+    # #region agent log
+    _debug_log("H1_main_exec", "app_balatro.py:main", "main() entered")
+    # #endregion
     st.set_page_config(page_title="Kính Thiên Văn Thông Minh", page_icon="🌌", layout="wide", initial_sidebar_state="collapsed")
     apply_modern_dark_theme()
 
@@ -116,14 +119,6 @@ def main():
             latitude, longitude, horizon_hours, plan_step, minute_bucket
         )
     except Exception as exc:
-        # #region agent log
-        _debug_log(
-            "H3_cache_runtime_exception",
-            "app_balatro.py:main",
-            "compute_cached_engine raised",
-            {"error": str(exc), "error_type": str(type(exc))},
-        )
-        # #endregion
         st.error("Không thể tải dữ liệu thiên văn.")
         st.code(str(exc))
         st.info("Mẹo: thử Reboot app trên Streamlit Cloud để làm mới cache và quyền truy cập mạng.")
@@ -775,6 +770,9 @@ def apply_modern_dark_theme():
     """, unsafe_allow_html=True)
 
 # ====================== CHƯƠNG TRÌNH CHÍNH ======================
+# #region agent log
+_debug_log("H2_legacy_block_exec", "app_balatro.py:legacy_block", "legacy block executed after main definition")
+# #endregion
 st.set_page_config(page_title="Kính Thiên Văn Thông Minh", page_icon="🌌", layout="wide", initial_sidebar_state="collapsed")
 apply_modern_dark_theme()
 st.title("⭐️ KÍNH THIÊN VĂN THÔNG MINH ⭐️")
