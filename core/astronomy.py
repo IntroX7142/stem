@@ -158,16 +158,13 @@ def compute_cached_engine(latitude, longitude, horizon_hours, step_minutes, minu
         "core/astronomy.py:compute_cached_engine",
         "compute_cached_engine return shape",
         {
-            "db_type": str(type(db_thien_the)),
-            "observer_type": str(type(observer)),
-            "ts_type": str(type(ts)),
             "snapshot_len": len(snapshot_rows),
             "planner_len": len(planner_rows),
             "timeline_targets": len(timeline_by_target),
         },
     )
     # #endregion
-    return db_thien_the, observer, ts, snapshot_rows, planner_rows, timeline_by_target
+    return snapshot_rows, planner_rows, timeline_by_target
 
 
 def get_rise_set_info(target_name, latitude, longitude):
