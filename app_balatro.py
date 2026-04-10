@@ -92,8 +92,10 @@ def main():
         db_thien_the, observer, ts, snapshot_rows, planner_rows, timelines = compute_cached_engine(
             latitude, longitude, horizon_hours, plan_step, minute_bucket
         )
-    except Exception:
-        st.error("Không thể tải dữ liệu thiên văn. Kiểm tra mạng rồi chạy lại ứng dụng.")
+    except Exception as exc:
+        st.error("Không thể tải dữ liệu thiên văn.")
+        st.code(str(exc))
+        st.info("Mẹo: thử Reboot app trên Streamlit Cloud để làm mới cache và quyền truy cập mạng.")
         st.stop()
 
     st.caption(
