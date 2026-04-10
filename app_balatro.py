@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 import csv
 import io
+import json
+import time
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -17,6 +19,23 @@ try:
     from streamlit_autorefresh import st_autorefresh
 except Exception:
     st_autorefresh = None
+
+
+def _debug_log(hypothesis_id, location, message, data=None, run_id="pre-fix"):
+    payload = {
+        "sessionId": "82ac6d",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open("debug-82ac6d.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 def create_csv_bytes(rows):
@@ -93,6 +112,14 @@ def main():
             latitude, longitude, horizon_hours, plan_step, minute_bucket
         )
     except Exception as exc:
+        # #region agent log
+        _debug_log(
+            "H3_cache_runtime_exception",
+            "app_balatro.py:main",
+            "compute_cached_engine raised",
+            {"error": str(exc), "error_type": str(type(exc))},
+        )
+        # #endregion
         st.error("Không thể tải dữ liệu thiên văn.")
         st.code(str(exc))
         st.info("Mẹo: thử Reboot app trên Streamlit Cloud để làm mới cache và quyền truy cập mạng.")
