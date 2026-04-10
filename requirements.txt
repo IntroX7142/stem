@@ -6,4 +6,5 @@ pandas
 astropy
 astroplan
 openpyxl
-streamlit-
+streamlit-autorefresh
+
