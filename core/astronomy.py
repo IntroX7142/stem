@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+import tempfile
 
 import streamlit as st
-from skyfield.api import Topos, load
+from skyfield.api import Loader, Topos, load
 
 from core.constants import FIXED_TARGET_COORDS, LOCAL_TZ, OBJECT_CATEGORIES, SOLAR_SYSTEM_KEYS
 from data.catalog import build_celestial_db
@@ -19,9 +21,32 @@ except Exception:
 
 @st.cache_resource(show_spinner=False)
 def get_astronomy_resources():
-    planets = load("de421.bsp")
-    ts = load.timescale()
-    return planets, planets["earth"], ts
+    errors = []
+
+    # Thu cach mac dinh cua Skyfield truoc.
+    try:
+        planets = load("de421.bsp")
+        ts = load.timescale()
+        return planets, planets["earth"], ts
+    except Exception as exc:
+        errors.append(f"default-loader: {exc}")
+
+    # Fallback tren thu muc tam (tranh loi quyen ghi tren Streamlit Cloud).
+    try:
+        skyfield_tmp = Path(tempfile.gettempdir()) / "skyfield_data_cache"
+        skyfield_tmp.mkdir(parents=True, exist_ok=True)
+        loader = Loader(str(skyfield_tmp))
+        planets = loader("de421.bsp")
+        ts = loader.timescale()
+        return planets, planets["earth"], ts
+    except Exception as exc:
+        errors.append(f"tmp-loader: {exc}")
+
+    raise RuntimeError(
+        "Khong tai duoc du lieu thien van de421.bsp. "
+        "Co the host nguon du lieu bi chan/khong truy cap duoc. "
+        f"Chi tiet: {' | '.join(errors)}"
+    )
 
 
 def build_observer(earth, latitude, longitude):
