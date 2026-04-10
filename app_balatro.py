@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import csv
 import io
+import json
 import time
 
 import pandas as pd
@@ -17,6 +18,33 @@ try:
     ASTROPLAN_AVAILABLE = True
 except Exception:
     ASTROPLAN_AVAILABLE = False
+
+
+def debug_log(hypothesis_id, location, message, data=None, run_id="pre-fix"):
+    payload = {
+        "sessionId": "82ac6d",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open("debug-82ac6d.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+# #region agent log
+debug_log(
+    "H1_optional_deps",
+    "app_balatro.py:startup_imports",
+    "Optional deps import status",
+    {"astroplan_available": ASTROPLAN_AVAILABLE},
+)
+# #endregion
 
 # ====================== CẤU HÌNH VỊ TRÍ QUAN SÁT ======================
 DEFAULT_LAT = 10.9500
@@ -82,8 +110,14 @@ FIXED_TARGET_COORDS = {
 
 @st.cache_resource(show_spinner=False)
 def get_astronomy_resources():
+    # #region agent log
+    debug_log("H2_ephemeris_load", "app_balatro.py:get_astronomy_resources", "Loading ephemeris started")
+    # #endregion
     planets = load("de421.bsp")
     ts = load.timescale()
+    # #region agent log
+    debug_log("H2_ephemeris_load", "app_balatro.py:get_astronomy_resources", "Loading ephemeris success")
+    # #endregion
     return planets, planets["earth"], ts
 
 
@@ -235,6 +269,14 @@ def create_excel_bytes(df):
 
 
 def get_rise_set_info(target_name, latitude, longitude):
+    # #region agent log
+    debug_log(
+        "H4_rise_set_path",
+        "app_balatro.py:get_rise_set_info",
+        "Rise/set requested",
+        {"target_name": target_name, "lat": latitude, "lon": longitude, "astroplan_available": ASTROPLAN_AVAILABLE},
+    )
+    # #endregion
     if not ASTROPLAN_AVAILABLE:
         return "Chưa bật", "Cài thêm astropy + astroplan để xem giờ mọc/lặn."
 
@@ -262,6 +304,14 @@ def get_rise_set_info(target_name, latitude, longitude):
         set_local = set_time.to_datetime(timezone=LOCAL_TZ).strftime("%H:%M")
         return "Sẵn sàng", f"Mọc: {rise_local} • Lặn: {set_local} (GMT+7)"
     except Exception:
+        # #region agent log
+        debug_log(
+            "H4_rise_set_path",
+            "app_balatro.py:get_rise_set_info",
+            "Rise/set failed with exception",
+            {"target_name": target_name},
+        )
+        # #endregion
         return "Không khả dụng", "Không tính được giờ mọc/lặn cho mục tiêu này tại vị trí hiện tại."
 
 
@@ -438,6 +488,9 @@ st.markdown("---")
 try:
     planets, earth, ts = get_astronomy_resources()
 except Exception:
+    # #region agent log
+    debug_log("H2_ephemeris_load", "app_balatro.py:main_init", "Ephemeris load failed in main")
+    # #endregion
     st.error("Không thể tải dữ liệu thiên văn (de421.bsp). Hãy kiểm tra mạng và chạy lại ứng dụng.")
     st.stop()
 
@@ -457,6 +510,14 @@ with st.sidebar:
     plan_step = st.slider("Bước lập kế hoạch (phút)", min_value=5, max_value=60, value=15, step=5)
 
 observer = build_observer(earth, latitude, longitude)
+# #region agent log
+debug_log(
+    "H3_observer_build",
+    "app_balatro.py:observer_setup",
+    "Observer created",
+    {"station_name": station_name, "lat": latitude, "lon": longitude},
+)
+# #endregion
 st.caption(
     f"📍 Trạm: **{station_name}** • Vị trí: **{latitude:.4f}, {longitude:.4f}** • "
     f"Giờ địa phương: **{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M:%S')} (GMT+7)**"
@@ -494,7 +555,18 @@ if "last_result" not in st.session_state:
 if st.button("📍 BẮT ĐẦU DÒ TÌM & QUAN SÁT", use_container_width=True):
     try:
         alt, az, khoang_cach_str = tinh_toan_vi_tri(lua_chon, db_thien_the, observer, ts)
+        # #region agent log
+        debug_log(
+            "H5_compute_flow",
+            "app_balatro.py:button_compute",
+            "Compute success",
+            {"target": lua_chon, "alt": round(alt, 2), "az": round(az, 2)},
+        )
+        # #endregion
     except Exception:
+        # #region agent log
+        debug_log("H5_compute_flow", "app_balatro.py:button_compute", "Compute failed", {"target": lua_chon})
+        # #endregion
         st.error("Không thể tính vị trí thiên thể lúc này. Vui lòng thử lại sau vài giây.")
         st.stop()
     st.session_state.last_result = {"name": lua_chon, "alt": alt, "az": az, "dist": khoang_cach_str}
