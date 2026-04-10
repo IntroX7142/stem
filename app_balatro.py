@@ -15,57 +15,67 @@ DEFAULT_LON = 107.01
 PROFILE_STORE = "observer_profiles.json"
 
 LOCATION_PRESETS = {
-    "THCS Minh Đức (Đồng Nai)": (10.95, 107.01),
-    "TP.HCM": (10.7769, 106.7009),
-    "Hà Nội": (21.0285, 105.8542),
+    "🏫 THCS Minh Đức (Đồng Nai)": (10.95, 107.01),
+    "🏙️ TP.HCM": (10.7769, 106.7009),
+    "🏛️ Hà Nội": (21.0285, 105.8542),
 }
 
 OBJECT_CATEGORIES = {
-    "Mat Troi": "He Mat Troi",
-    "Mat Trang": "He Mat Troi",
-    "Sao Thuy": "He Mat Troi",
-    "Sao Kim": "He Mat Troi",
-    "Sao Hoa": "He Mat Troi",
-    "Sao Moc": "He Mat Troi",
-    "Sao Tho": "He Mat Troi",
-    "Polaris": "Sao sang",
-    "Sirius": "Sao sang",
-    "Vega": "Sao sang",
-    "Orion": "Chom sao",
-    "Cassiopeia": "Chom sao",
-    "Andromeda": "Thien ha",
+    "☀️ Mặt Trời": "Hệ Mặt Trời",
+    "🌕 Mặt Trăng": "Hệ Mặt Trời",
+    "🪐 Sao Thủy": "Hệ Mặt Trời",
+    "🪐 Sao Kim": "Hệ Mặt Trời",
+    "🪐 Sao Hỏa": "Hệ Mặt Trời",
+    "🪐 Sao Mộc": "Hệ Mặt Trời",
+    "🪐 Sao Thổ": "Hệ Mặt Trời",
+    "🪐 Sao Thiên Vương": "Hệ Mặt Trời",
+    "🪐 Sao Hải Vương": "Hệ Mặt Trời",
+    "⭐ Sao Bắc Cực (Polaris)": "Sao sáng",
+    "⭐ Sao Sirius": "Sao sáng",
+    "⭐ Sao Vega": "Sao sáng",
+    "⭐ Sao Betelgeuse": "Sao sáng",
+    "⭐ Sao Rigel": "Sao sáng",
+    "⭐ Sao Aldebaran": "Sao sáng",
+    "⭐ Sao Antares": "Sao sáng",
+    "⭐ Sao Deneb": "Sao sáng",
+    "⭐ Sao Altair": "Sao sáng",
+    "⭐ Sao Arcturus": "Sao sáng",
+    "✨ Chòm Orion": "Chòm sao",
+    "✨ Chòm Cassiopeia": "Chòm sao",
+    "✨ Chòm Gấu Lớn": "Chòm sao",
+    "✨ Chòm Bọ Cạp": "Chòm sao",
+    "✨ Chòm Sư Tử": "Chòm sao",
+    "✨ Chòm Thiên Nga": "Chòm sao",
+    "🌀 Thiên hà Andromeda": "Thiên hà",
 }
 
 FUN_FACTS = {
-    "Mat Troi": "Anh sang Mat Troi den Trai Dat sau khoang 8 phut 20 giay.",
-    "Mat Trang": "Mat Trang dang roi xa Trai Dat khoang 3.8 cm moi nam.",
-    "Sao Thuy": "Sao Thuy co chu ky quay quanh Mat Troi chi 88 ngay, nhung nhiet do thay doi rat lon.",
-    "Sao Kim": "Sao Kim quay nguoc chieu so voi da so hanh tinh va co khi quyen day dac.",
-    "Sao Hoa": "Sao Hoa co Olympus Mons, nui lua lon nhat He Mat Troi.",
-    "Sao Moc": "Sao Moc la hanh tinh lon nhat He Mat Troi, co bao Lon Do ton tai rat lau.",
-    "Sao Tho": "Sao Tho noi tieng voi he vanh dai bang da va bui, rat de nhan ra khi quan sat bang kinh.",
-    "Polaris": "Polaris gan cuc Bac thien cau, dung de dinh huong huong Bac.",
-    "Sirius": "Sirius la ngoi sao sang nhat tren bau troi dem khi quan sat tu Trai Dat.",
-    "Vega": "Vega tung dong vai tro sao Bac Cuc trong qua khu xa va se tro lai vai tro nay trong tuong lai.",
-    "Orion": "Orion de nhan ra nho 3 ngoi sao thang hang o phan dai.",
-    "Cassiopeia": "Cassiopeia co hinh chu W dac trung, de tim o bau troi ban cau Bac.",
-    "Andromeda": "Andromeda la thien ha lon gan Ngan Ha, co the thay mo nhat bang mat thuong trong troi toi.",
-}
-
-DISPLAY_NAMES = {
-    "Mat Troi": "☀️ Mặt Trời",
-    "Mat Trang": "🌕 Mặt Trăng",
-    "Sao Thuy": "🪐 Sao Thủy",
-    "Sao Kim": "🪐 Sao Kim",
-    "Sao Hoa": "🪐 Sao Hỏa",
-    "Sao Moc": "🪐 Sao Mộc",
-    "Sao Tho": "🪐 Sao Thổ",
-    "Polaris": "⭐ Polaris",
-    "Sirius": "⭐ Sirius",
-    "Vega": "⭐ Vega",
-    "Orion": "✨ Chòm Orion",
-    "Cassiopeia": "✨ Chòm Cassiopeia",
-    "Andromeda": "🌀 Thiên hà Andromeda",
+    "☀️ Mặt Trời": "Ánh sáng từ Mặt Trời đến Trái Đất sau khoảng 8 phút 20 giây.",
+    "🌕 Mặt Trăng": "Mặt Trăng đang rời xa Trái Đất khoảng 3.8 cm mỗi năm.",
+    "🪐 Sao Thủy": "Sao Thủy quay quanh Mặt Trời rất nhanh, chỉ khoảng 88 ngày.",
+    "🪐 Sao Kim": "Sao Kim quay ngược chiều và có khí quyển dày, rất nóng.",
+    "🪐 Sao Hỏa": "Sao Hỏa có núi Olympus Mons, núi lửa lớn nhất Hệ Mặt Trời.",
+    "🪐 Sao Mộc": "Sao Mộc có Vết Đỏ Lớn, một cơn bão khổng lồ kéo dài hàng thế kỷ.",
+    "🪐 Sao Thổ": "Sao Thổ nổi bật với hệ vành đai băng đá tuyệt đẹp.",
+    "🪐 Sao Thiên Vương": "Sao Thiên Vương quay nghiêng gần như nằm ngang.",
+    "🪐 Sao Hải Vương": "Sao Hải Vương có gió cực mạnh trong Hệ Mặt Trời.",
+    "⭐ Sao Bắc Cực (Polaris)": "Polaris nằm gần cực Bắc thiên cầu nên rất hữu ích để định hướng.",
+    "⭐ Sao Sirius": "Sirius là sao sáng nhất trên bầu trời đêm khi nhìn từ Trái Đất.",
+    "⭐ Sao Vega": "Vega từng là sao Bắc Cực trong quá khứ xa.",
+    "⭐ Sao Betelgeuse": "Betelgeuse là sao khổng lồ đỏ nổi bật trong chòm Orion.",
+    "⭐ Sao Rigel": "Rigel là một trong các sao sáng nhất của chòm Orion.",
+    "⭐ Sao Aldebaran": "Aldebaran có màu cam đỏ đặc trưng và khá dễ nhận ra.",
+    "⭐ Sao Antares": "Antares là sao sáng đỏ nổi bật của chòm Bọ Cạp.",
+    "⭐ Sao Deneb": "Deneb là một đỉnh của Tam giác Mùa Hè.",
+    "⭐ Sao Altair": "Altair là sao sáng chính trong chòm Đại Bàng.",
+    "⭐ Sao Arcturus": "Arcturus là sao rất sáng thuộc chòm Mục Phu.",
+    "✨ Chòm Orion": "Chòm Orion dễ nhận ra nhờ ba sao thẳng hàng ở phần đai.",
+    "✨ Chòm Cassiopeia": "Cassiopeia có dạng chữ W đặc trưng ở bầu trời phía Bắc.",
+    "✨ Chòm Gấu Lớn": "Chòm Gấu Lớn chứa nhóm sao Bắc Đẩu nổi tiếng.",
+    "✨ Chòm Bọ Cạp": "Chòm Bọ Cạp nổi bật vào mùa hè với sao Antares màu đỏ.",
+    "✨ Chòm Sư Tử": "Chòm Sư Tử thường quan sát tốt vào mùa xuân.",
+    "✨ Chòm Thiên Nga": "Chòm Thiên Nga có hình chữ thập lớn dễ định vị.",
+    "🌀 Thiên hà Andromeda": "Andromeda là thiên hà lớn gần Ngân Hà và có thể thấy mờ trong trời tối.",
 }
 
 
@@ -115,19 +125,32 @@ def get_resources():
 
 def build_db(planets):
     return {
-        "Mat Troi": planets["sun"],
-        "Mat Trang": planets["moon"],
-        "Sao Thuy": planets["mercury"],
-        "Sao Kim": planets["venus"],
-        "Sao Hoa": planets["mars"],
-        "Sao Moc": planets["jupiter barycenter"],
-        "Sao Tho": planets["saturn barycenter"],
-        "Orion": Star(ra_hours=5.5, dec_degrees=0.0),
-        "Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
-        "Polaris": Star(ra_hours=2.53, dec_degrees=89.26),
-        "Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
-        "Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
-        "Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
+        "☀️ Mặt Trời": planets["sun"],
+        "🌕 Mặt Trăng": planets["moon"],
+        "🪐 Sao Thủy": planets["mercury"],
+        "🪐 Sao Kim": planets["venus"],
+        "🪐 Sao Hỏa": planets["mars"],
+        "🪐 Sao Mộc": planets["jupiter barycenter"],
+        "🪐 Sao Thổ": planets["saturn barycenter"],
+        "🪐 Sao Thiên Vương": planets["uranus barycenter"],
+        "🪐 Sao Hải Vương": planets["neptune barycenter"],
+        "⭐ Sao Bắc Cực (Polaris)": Star(ra_hours=2.53, dec_degrees=89.26),
+        "⭐ Sao Sirius": Star(ra_hours=6.7525, dec_degrees=-16.7161),
+        "⭐ Sao Vega": Star(ra_hours=18.6167, dec_degrees=38.7833),
+        "⭐ Sao Betelgeuse": Star(ra_hours=5.9195, dec_degrees=7.4073),
+        "⭐ Sao Rigel": Star(ra_hours=5.2423, dec_degrees=-8.2016),
+        "⭐ Sao Aldebaran": Star(ra_hours=4.5987, dec_degrees=16.5093),
+        "⭐ Sao Antares": Star(ra_hours=16.4901, dec_degrees=-26.4319),
+        "⭐ Sao Deneb": Star(ra_hours=20.6905, dec_degrees=45.2803),
+        "⭐ Sao Altair": Star(ra_hours=19.8464, dec_degrees=8.8683),
+        "⭐ Sao Arcturus": Star(ra_hours=14.261, dec_degrees=19.1824),
+        "✨ Chòm Orion": Star(ra_hours=5.5, dec_degrees=0.0),
+        "✨ Chòm Cassiopeia": Star(ra_hours=1.0, dec_degrees=62.0),
+        "✨ Chòm Gấu Lớn": Star(ra_hours=11.0, dec_degrees=50.0),
+        "✨ Chòm Bọ Cạp": Star(ra_hours=16.8, dec_degrees=-30.0),
+        "✨ Chòm Sư Tử": Star(ra_hours=10.5, dec_degrees=15.0),
+        "✨ Chòm Thiên Nga": Star(ra_hours=20.7, dec_degrees=40.0),
+        "🌀 Thiên hà Andromeda": Star(ra_hours=0.7, dec_degrees=41.2),
     }
 
 
@@ -170,9 +193,9 @@ def make_chart(rows, only_visible):
     for r in rows:
         if only_visible and not r["visible"]:
             continue
-        fig.add_trace(go.Scatter(x=[r["Azimuth"]], y=[r["Altitude"]], mode="markers+text", text=[vn(r["Thien the"])], textposition="top center", marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"), showlegend=False))
+        fig.add_trace(go.Scatter(x=[r["Azimuth"]], y=[r["Altitude"]], mode="markers+text", text=[r["Thien the"]], textposition="top center", marker=dict(size=14 if r["visible"] else 9, color="#22d3ee" if r["visible"] else "#64748b"), showlegend=False))
     fig.add_hline(y=0, line_dash="dash", line_color="#e5e7eb")
-    fig.update_layout(height=460, title="Ban do sao", xaxis_title="Phuong vi (do)", yaxis_title="Do cao (do)")
+    fig.update_layout(height=460, title="Bản đồ sao", xaxis_title="Phương vị (độ)", yaxis_title="Độ cao (độ)")
     return fig
 
 
@@ -206,19 +229,15 @@ def render_guidance(target, alt, az):
         st.markdown("<div class='warn'>Mục tiêu đang dưới chân trời, hãy đợi thêm và thử lại.</div>", unsafe_allow_html=True)
 
 
-def vn(name):
-    return DISPLAY_NAMES.get(name, name)
-
-
 def sidebar():
     with st.sidebar:
         st.header("⚙️ Cấu hình quan sát")
-        preset = st.selectbox("📍 Chọn địa điểm quan sát", list(LOCATION_PRESETS.keys()) + ["Tùy chỉnh"], key="preset")
-        if preset != "Tùy chỉnh":
+        preset = st.selectbox("📍 Chọn địa điểm quan sát", list(LOCATION_PRESETS.keys()) + ["🛠️ Tùy chỉnh"], key="preset")
+        if preset != "🛠️ Tùy chỉnh":
             station = preset
             d_lat, d_lon = LOCATION_PRESETS[preset]
         else:
-            station = st.text_input("Tên trạm", "Trạm tùy chỉnh")
+            station = st.text_input("Tên trạm", "🛰️ Trạm tùy chỉnh")
             d_lat, d_lon = DEFAULT_LAT, DEFAULT_LON
         lat = st.number_input("Vĩ độ", -90.0, 90.0, d_lat, 0.001, format="%.4f")
         lon = st.number_input("Kinh độ", -180.0, 180.0, d_lon, 0.001, format="%.4f")
@@ -254,17 +273,17 @@ def main():
     m3.metric("🧭 Tổng đối tượng", len(rows))
 
     f1, f2, f3 = st.columns([2, 2, 1])
-    group = f1.selectbox("🔎 Lọc nhóm", ["Tất cả", "He Mat Troi", "Sao sang", "Chom sao", "Thien ha"], key="group")
+    group = f1.selectbox("🔎 Lọc nhóm", ["Tất cả", "Hệ Mặt Trời", "Sao sáng", "Chòm sao", "Thiên hà"], key="group")
     search = f2.text_input("Tìm thiên thể", "", key="search")
     only_visible = f3.toggle("Chỉ hiện đang thấy", False, key="only_visible")
     names = [n for n in db.keys() if (group == "Tất cả" or OBJECT_CATEGORIES.get(n, "") == group) and (search.strip().lower() in n.lower())]
     if not names:
         names = list(db.keys())
-    target = st.selectbox("🪐 Chọn thiên thể", names, key="target", format_func=vn)
+    target = st.selectbox("🪐 Chọn thiên thể", names, key="target")
 
     if st.button("📍 Dò tìm & quan sát", use_container_width=True):
         alt, az, dist = compute_alt_az(db[target], observer, ts.now())
-        dist_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoang cach lon"
+        dist_text = f"{dist.km:,.0f} km" if hasattr(dist, "km") else "Khoảng cách rất xa"
         st.session_state.scan = {"target": target, "alt": alt, "az": az, "dist": dist_text}
 
     if "scan" in st.session_state:
@@ -276,15 +295,15 @@ def main():
         if timelines.get(r["target"]):
             best = max(timelines[r["target"]], key=lambda x: x["alt"])
             st.info(f"⏱️ Giờ đề xuất: {best['time']} (GMT+7), độ cao cực đại {best['alt']:.1f}°")
-        render_guidance(vn(r["target"]), r["alt"], r["az"])
+        render_guidance(r["target"], r["alt"], r["az"])
         st.write(f"**🌟 Fun fact:** {FUN_FACTS.get(r['target'], 'Hãy tiếp tục khám phá vũ trụ!')}")
 
-    # Dam bao bo du lieu fun fact luon day du cho cac thien the dang su dung.
+    # Đảm bảo bộ dữ liệu fun fact luôn đầy đủ cho các thiên thể đang sử dụng.
     missing_facts = [name for name in db.keys() if name not in FUN_FACTS]
     if missing_facts:
         st.warning("Thiếu Fun Fact cho: " + ", ".join(missing_facts))
 
-    tab1, tab2, tab3 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🌌 Bản đồ sao", "📅 Kế hoạch quan sát", "📊 Tổng quan", "🏆 Xếp hạng thiên thể"])
     with tab1:
         st.plotly_chart(make_chart(rows, only_visible), use_container_width=True)
     with tab2:
@@ -298,6 +317,41 @@ def main():
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
         st.download_button("⬇️ Tải tổng quan CSV", data=to_csv_bytes(summary_rows), file_name="summary.csv", mime="text/csv")
         st.download_button("⬇️ Tải tổng quan Excel", data=to_excel_bytes(summary_df), file_name="summary.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    with tab4:
+        st.subheader("🏆 Bảng xếp hạng thiên thể quan sát tốt nhất")
+        bang_xep_hang = []
+        for ten, du_lieu_tuyen_tinh in timelines.items():
+            do_cao_cuc_dai = max(m["alt"] for m in du_lieu_tuyen_tinh)
+            so_moc_nhin_thay = len([m for m in du_lieu_tuyen_tinh if m["alt"] > 0])
+            ty_le_nhin_thay = round(100 * so_moc_nhin_thay / len(du_lieu_tuyen_tinh), 1) if du_lieu_tuyen_tinh else 0.0
+            diem_uu_tien = round(do_cao_cuc_dai * 0.7 + ty_le_nhin_thay * 0.3, 2)
+            trang_thai_hien_tai = next((r["Trang thai"] for r in rows if r["Thien the"] == ten), "Không rõ")
+            bang_xep_hang.append(
+                {
+                    "Thiên thể": ten,
+                    "Nhóm": OBJECT_CATEGORIES.get(ten, "Khác"),
+                    "Điểm ưu tiên": diem_uu_tien,
+                    "Độ cao cực đại (°)": round(do_cao_cuc_dai, 1),
+                    "Tỷ lệ nhìn thấy (%)": ty_le_nhin_thay,
+                    "Trạng thái hiện tại": trang_thai_hien_tai,
+                }
+            )
+        bang_xep_hang_df = pd.DataFrame(bang_xep_hang).sort_values(by="Điểm ưu tiên", ascending=False).reset_index(drop=True)
+        bang_xep_hang_df.index = bang_xep_hang_df.index + 1
+        st.dataframe(bang_xep_hang_df, use_container_width=True)
+        st.markdown("### ⭐ Top 5 ưu tiên ngay")
+        for hang, dong in bang_xep_hang_df.head(5).iterrows():
+            st.write(f"{hang}. {dong['Thiên thể']} — Điểm {dong['Điểm ưu tiên']} • Độ cao tối đa {dong['Độ cao cực đại (°)']}°")
+        st.download_button(
+            "⬇️ Tải bảng xếp hạng CSV",
+            data=to_csv_bytes(bang_xep_hang_df.to_dict(orient="records")),
+            file_name="bang_xep_hang_thien_the.csv",
+            mime="text/csv",
+        )
+
+    st.markdown("---")
+    st.caption("✨ Sản phẩm STEM của lớp 9.1 — Viết bằng Python, Streamlit và Skyfield")
 
 
 if __name__ == "__main__":
