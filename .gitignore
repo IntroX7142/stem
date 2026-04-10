@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Streamlit local/state
+.streamlit/secrets.toml
+observer_profiles.json
+
+# OS/editor
+.DS_Store
+Thumbs.db
